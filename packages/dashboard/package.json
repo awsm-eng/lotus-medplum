@@ -1,15 +1,15 @@
 {
   "type": "module",
-  "name": "@medplum/lotus",
+  "name": "@awsm/medplum-dashboard",
   "version": "2.1.4",
-  "description": "Lotus App",
-  "author": "Medplum <hello@medplum.com>",
+  "description": "Medplum AWSM Dashboard",
+  "author": "AWSM <engineering@awsm.vc>",
   "license": "Apache-2.0",
-  "homepage": "https://www.medplum.com/",
+  "homepage": "https://www.awsm.vc/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/medplum/medplum.git",
-    "directory": "packages/lotus"
+    "url": "https://github.com/awsm-eng/medplum.git",
+    "directory": "packages/dashboard"
   },
   "engines": {
     "node": ">=18.0.0"
