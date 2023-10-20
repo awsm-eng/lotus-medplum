@@ -1,5 +1,5 @@
 import { getQuestionnaireAnswers } from '@medplum/core';
-import { Questionnaire, QuestionnaireResponse } from '@medplum/fhirtypes';
+import { Extension, Questionnaire, QuestionnaireResponse } from '@medplum/fhirtypes';
 import { MockClient } from '@medplum/mock';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { randomUUID } from 'crypto';
@@ -11,6 +11,20 @@ import { QuestionnaireItemType } from '../utils/questionnaire';
 import { QuestionnaireForm, QuestionnaireFormProps } from './QuestionnaireForm';
 
 const medplum = new MockClient();
+
+const pageExtension: Extension[] = [
+  {
+    url: 'http://hl7.org/fhir/StructureDefinition/questionnaire-itemControl',
+    valueCodeableConcept: {
+      coding: [
+        {
+          system: 'http://hl7.org/fhir/questionnaire-item-control',
+          code: 'page',
+        },
+      ],
+    },
+  },
+];
 
 async function setup(args: QuestionnaireFormProps): Promise<void> {
   await act(async () => {
@@ -25,6 +39,17 @@ async function setup(args: QuestionnaireFormProps): Promise<void> {
 }
 
 describe('QuestionnaireForm', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    jest.useRealTimers();
+  });
+
   test('Renders empty', async () => {
     await setup({
       questionnaire: {
@@ -128,7 +153,7 @@ describe('QuestionnaireForm', () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByText('OK'));
+      fireEvent.click(screen.getByText('Submit'));
     });
 
     expect(onSubmit).toBeCalled();
@@ -232,7 +257,7 @@ describe('QuestionnaireForm', () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByText('OK'));
+      fireEvent.click(screen.getByText('Submit'));
     });
 
     expect(onSubmit).toBeCalled();
@@ -258,7 +283,7 @@ describe('QuestionnaireForm', () => {
     expect(screen.getByTestId('questionnaire-form')).toBeInTheDocument();
 
     await act(async () => {
-      fireEvent.click(screen.getByText('OK'));
+      fireEvent.click(screen.getByText('Submit'));
     });
 
     expect(onSubmit).toBeCalled();
@@ -368,7 +393,7 @@ describe('QuestionnaireForm', () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByText('OK'));
+      fireEvent.click(screen.getByText('Submit'));
     });
 
     const response1 = onSubmit.mock.calls[0][0];
@@ -380,7 +405,7 @@ describe('QuestionnaireForm', () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByText('OK'));
+      fireEvent.click(screen.getByText('Submit'));
     });
 
     const response2 = onSubmit.mock.calls[1][0];
@@ -521,7 +546,7 @@ describe('QuestionnaireForm', () => {
     expect(screen.getByText('hello.txt')).toBeInTheDocument();
 
     await act(async () => {
-      fireEvent.click(screen.getByText('OK'));
+      fireEvent.click(screen.getByText('Submit'));
     });
 
     const submittedData = onSubmit.mock.calls[0][0];
@@ -552,7 +577,7 @@ describe('QuestionnaireForm', () => {
     expect(input).toBeInTheDocument();
 
     await act(async () => {
-      fireEvent.click(screen.getByText('OK'));
+      fireEvent.click(screen.getByText('Submit'));
     });
 
     expect(onSubmit).toBeCalled();
@@ -610,7 +635,7 @@ describe('QuestionnaireForm', () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByText('OK'));
+      fireEvent.click(screen.getByText('Submit'));
     });
 
     const response1 = onSubmit.mock.calls[0][0];
@@ -622,7 +647,7 @@ describe('QuestionnaireForm', () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByText('OK'));
+      fireEvent.click(screen.getByText('Submit'));
     });
 
     const response2 = onSubmit.mock.calls[1][0];
@@ -633,7 +658,7 @@ describe('QuestionnaireForm', () => {
       fireEvent.change(dropDown, { target: { value: '' } });
     });
     await act(async () => {
-      fireEvent.click(screen.getByText('OK'));
+      fireEvent.click(screen.getByText('Submit'));
     });
 
     const response3 = onSubmit.mock.calls[2][0];
@@ -786,19 +811,7 @@ describe('QuestionnaireForm', () => {
                 type: 'string',
               },
             ],
-            extension: [
-              {
-                url: 'http://hl7.org/fhir/StructureDefinition/questionnaire-itemControl',
-                valueCodeableConcept: {
-                  coding: [
-                    {
-                      system: 'http://hl7.org/fhir/questionnaire-item-control',
-                      code: 'page',
-                    },
-                  ],
-                },
-              },
-            ],
+            extension: pageExtension,
           },
           {
             linkId: 'q2',
@@ -811,19 +824,7 @@ describe('QuestionnaireForm', () => {
                 type: 'string',
               },
             ],
-            extension: [
-              {
-                url: 'http://hl7.org/fhir/StructureDefinition/questionnaire-itemControl',
-                valueCodeableConcept: {
-                  coding: [
-                    {
-                      system: 'http://hl7.org/fhir/questionnaire-item-control',
-                      code: 'page',
-                    },
-                  ],
-                },
-              },
-            ],
+            extension: pageExtension,
           },
         ],
       },
@@ -883,19 +884,7 @@ describe('QuestionnaireForm', () => {
                 type: 'string',
               },
             ],
-            extension: [
-              {
-                url: 'http://hl7.org/fhir/StructureDefinition/questionnaire-itemControl',
-                valueCodeableConcept: {
-                  coding: [
-                    {
-                      system: 'http://hl7.org/fhir/questionnaire-item-control',
-                      code: 'page',
-                    },
-                  ],
-                },
-              },
-            ],
+            extension: pageExtension,
           },
           {
             linkId: 'q2',
@@ -921,19 +910,7 @@ describe('QuestionnaireForm', () => {
                 type: 'string',
               },
             ],
-            extension: [
-              {
-                url: 'http://hl7.org/fhir/StructureDefinition/questionnaire-itemControl',
-                valueCodeableConcept: {
-                  coding: [
-                    {
-                      system: 'http://hl7.org/fhir/questionnaire-item-control',
-                      code: 'page',
-                    },
-                  ],
-                },
-              },
-            ],
+            extension: pageExtension,
           },
         ],
       },
@@ -968,6 +945,7 @@ describe('QuestionnaireForm', () => {
   });
 
   test('Value Set Choice', async () => {
+    const onSubmit = jest.fn();
     await setup({
       questionnaire: {
         resourceType: 'Questionnaire',
@@ -982,18 +960,43 @@ describe('QuestionnaireForm', () => {
           },
         ],
       },
-      onSubmit: jest.fn(),
+      onSubmit,
     });
 
-    const dropDown = screen.getByText('Valueset');
-
-    await act(async () => {
-      fireEvent.click(dropDown);
-    });
+    const input = screen.getByRole('searchbox') as HTMLInputElement;
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
 
     await act(async () => {
-      fireEvent.change(dropDown, { target: 'Test Display' });
+      fireEvent.change(input, { target: { value: 'Test' } });
     });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'Test' } });
+    });
+
+    // Press the down arrow
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'ArrowDown', code: 'ArrowDown' });
+    });
+
+    // Wait for the drop down
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+
+    // Press "Enter"
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Submit'));
+    });
+
+    expect(onSubmit).toBeCalled();
+    const response = onSubmit.mock.calls[0][0];
+
+    const answer = getQuestionnaireAnswers(response);
+    expect(answer['q1']).toMatchObject({ valueCoding: { code: 'test-code', display: 'Test Display', system: 'x' } });
   });
 
   test('Repeated Choice Dropdown', async () => {
@@ -1155,24 +1158,13 @@ describe('QuestionnaireForm', () => {
                 ],
               },
             ],
-            extension: [
-              {
-                url: 'http://hl7.org/fhir/StructureDefinition/questionnaire-itemControl',
-                valueCodeableConcept: {
-                  coding: [
-                    {
-                      system: 'http://hl7.org/fhir/questionnaire-item-control',
-                      code: 'page',
-                    },
-                  ],
-                },
-              },
-            ],
+            extension: pageExtension,
           },
           {
             linkId: 'group2',
             type: 'group',
             text: 'Group 2',
+            extension: pageExtension,
             item: [
               {
                 linkId: 'string',
