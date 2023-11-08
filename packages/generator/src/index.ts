@@ -152,10 +152,30 @@ function writeInterfaceProperty(
   property: InternalSchemaElement,
   path: string
 ): void {
+    const exposedResources = [
+    'Patient',
+    'Coverage',
+    'Medication',
+    'AllergyIntolerance',
+    'DocumentReference',
+    'Condition',
+    'Organization',
+    'ActivityDefinition',
+  ];
+
   for (const typeScriptProperty of getTypeScriptProperties(property, path, fhirType.name)) {
     b.newLine();
     generateJavadoc(b, property.description);
     b.append(typeScriptProperty.name + '?: ' + typeScriptProperty.typeName + ';');
+    for (const exposedResource of exposedResources) {
+      if (property.path.startsWith(exposedResource + '.')) {
+        const pathComponents = property.path.split('.');
+        pathComponents.pop();
+        pathComponents.push(typeScriptProperty.name);
+        const finalPath = pathComponents.join('.');
+        console.log(finalPath);
+      }
+    }
   }
 }
 
