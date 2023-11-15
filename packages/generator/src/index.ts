@@ -25,11 +25,27 @@ export function main(): void {
   writeResourceFile();
   writeResourceTypeFile();
 
+  const bPaths = new FileBuilder();
+  bPaths.newLine();
+  bPaths.append('const propertyPaths = [')
+  bPaths.indentCount++;
+
   for (const type of Object.values(getAllDataTypes())) {
     if (isResourceTypeSchema(type)) {
-      writeInterfaceFile(type);
+      writeInterfaceFile(type, bPaths);
     }
   }
+
+  bPaths.indentCount--;
+  bPaths.append('];');
+  bPaths.newLine();
+  bPaths.append('export default propertyPaths;');
+  
+  writeFileSync(
+    resolve(__dirname, '../../../../lotus-ts/src/components/resourceHandlers/propertyPaths.ts'),
+    bPaths.toString(),
+    'utf-8'
+  );
 }
 
 function writeIndexFile(): void {
@@ -79,7 +95,7 @@ function writeResourceTypeFile(): void {
   writeFileSync(resolve(__dirname, '../../fhirtypes/dist/ResourceType.d.ts'), b.toString(), 'utf8');
 }
 
-function writeInterfaceFile(fhirType: InternalTypeSchema): void {
+function writeInterfaceFile(fhirType: InternalTypeSchema, bPaths: FileBuilder): void {
   if (Object.values(fhirType.elements).length === 0) {
     return;
   }
@@ -95,11 +111,11 @@ function writeInterfaceFile(fhirType: InternalTypeSchema): void {
     }
   }
 
-  writeInterface(b, fhirType);
+  writeInterface(b, fhirType, bPaths);
   writeFileSync(resolve(__dirname, '../../fhirtypes/dist/' + fhirType.name + '.d.ts'), b.toString(), 'utf8');
 }
 
-function writeInterface(b: FileBuilder, fhirType: InternalTypeSchema): void {
+function writeInterface(b: FileBuilder, fhirType: InternalTypeSchema, bPaths: FileBuilder): void {
   if (Object.values(fhirType.elements).length === 0) {
     return;
   }
@@ -124,7 +140,7 @@ function writeInterface(b: FileBuilder, fhirType: InternalTypeSchema): void {
       continue;
     }
     b.newLine();
-    writeInterfaceProperty(b, fhirType, property, path);
+    writeInterfaceProperty(b, fhirType, property, path, bPaths);
   }
 
   if (typeName === 'Reference') {
@@ -141,7 +157,7 @@ function writeInterface(b: FileBuilder, fhirType: InternalTypeSchema): void {
     subTypes.sort((t1, t2) => t1.name.localeCompare(t2.name));
 
     for (const subType of subTypes) {
-      writeInterface(b, subType);
+      writeInterface(b, subType, bPaths);
     }
   }
 }
@@ -150,7 +166,8 @@ function writeInterfaceProperty(
   b: FileBuilder,
   fhirType: InternalTypeSchema,
   property: InternalSchemaElement,
-  path: string
+  path: string,
+  bPaths: FileBuilder,
 ): void {
     const exposedResources = [
     'Patient',
@@ -173,7 +190,7 @@ function writeInterfaceProperty(
         pathComponents.pop();
         pathComponents.push(typeScriptProperty.name);
         const finalPath = pathComponents.join('.');
-        console.log(finalPath);
+        bPaths.append(`'${finalPath}',`);
       }
     }
   }
