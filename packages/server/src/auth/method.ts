@@ -1,10 +1,10 @@
 import { Operator } from '@medplum/core';
 import { DomainConfiguration } from '@medplum/fhirtypes';
 import { Request, Response } from 'express';
-import { body, validationResult } from 'express-validator';
+import { body } from 'express-validator';
 import { getConfig } from '../config';
-import { invalidRequest, sendOutcome } from '../fhir/outcomes';
 import { systemRepo } from '../fhir/repo';
+import { makeValidationMiddleware } from '../util/validator';
 
 /*
  * The method handler is used to determine available login methods.
@@ -13,15 +13,11 @@ import { systemRepo } from '../fhir/repo';
  * For example, an unauthenticated user could determine if "foo.com" has a domain configuration.
  */
 
-export const methodValidators = [body('email').isEmail().withMessage('Valid email address is required')];
+export const methodValidator = makeValidationMiddleware([
+  body('email').isEmail().withMessage('Valid email address is required'),
+]);
 
 export async function methodHandler(req: Request, res: Response): Promise<void> {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    sendOutcome(res, invalidRequest(errors));
-    return;
-  }
-
   const externalAuth = await isExternalAuth(req.body.email);
   if (externalAuth) {
     // Return the authorization URL
@@ -37,7 +33,7 @@ export async function methodHandler(req: Request, res: Response): Promise<void> 
 
 /**
  * Checks if the given email address is configured for external authentication.
- * @param email The user email address.
+ * @param email - The user email address.
  * @returns External auth url if available. Otherwise undefined.
  */
 export async function isExternalAuth(email: string): Promise<{ domain: string; authorizeUrl: string } | undefined> {
@@ -62,7 +58,7 @@ export async function isExternalAuth(email: string): Promise<{ domain: string; a
 
 /**
  * Returns the domain configuration for the given domain name.
- * @param domain The domain name.
+ * @param domain - The domain name.
  * @returns The domain configuration for the domain name if available.
  */
 export async function getDomainConfiguration(domain: string): Promise<DomainConfiguration | undefined> {

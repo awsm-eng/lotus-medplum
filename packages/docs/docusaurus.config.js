@@ -1,8 +1,8 @@
 // @ts-check
 // Note: type annotations allow type checking and IDEs autocompletion
 
-const lightCodeTheme = require('prism-react-renderer/themes/github');
-const darkCodeTheme = require('prism-react-renderer/themes/dracula');
+const lightCodeTheme = require('prism-react-renderer').themes.github;
+const darkCodeTheme = require('prism-react-renderer').themes.dracula;
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
@@ -43,40 +43,6 @@ const config = {
           trackingID: 'G-SHW0ZNT27G',
         },
       }),
-    ],
-  ],
-
-  plugins: [
-    [
-      'docusaurus-plugin-typedoc',
-      {
-        // Plugin Options
-        id: 'sdk',
-        out: 'sdk',
-
-        // TypeDoc options
-        entryPoints: ['../core/src/index.ts'],
-        tsconfig: '../core/tsconfig.json',
-        excludePrivate: true,
-        excludeProtected: true,
-        externalPattern: '**/fhirpath/*.ts',
-        excludeExternals: true,
-        sort: 'source-order',
-        categorizeByGroup: false,
-        categoryOrder: [
-          'Read',
-          'Write',
-          'Create',
-          'Delete',
-          'Media',
-          'Authentication',
-          'Search',
-          'Caching',
-          'Batch',
-          '*',
-          'Other',
-        ],
-      },
     ],
   ],
 

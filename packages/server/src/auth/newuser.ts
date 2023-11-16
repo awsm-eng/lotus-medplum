@@ -2,38 +2,33 @@ import { badRequest, NewUserRequest, normalizeOperationOutcome } from '@medplum/
 import { ClientApplication, Project, User } from '@medplum/fhirtypes';
 import { randomUUID } from 'crypto';
 import { Request, Response } from 'express';
-import { body, validationResult } from 'express-validator';
+import { body } from 'express-validator';
 import { pwnedPassword } from 'hibp';
 import { getConfig } from '../config';
-import { invalidRequest, sendOutcome } from '../fhir/outcomes';
+import { sendOutcome } from '../fhir/outcomes';
 import { systemRepo } from '../fhir/repo';
 import { globalLogger } from '../logger';
 import { getUserByEmailInProject, getUserByEmailWithoutProject, tryLogin } from '../oauth/utils';
 import { bcryptHashPassword, getProjectByRecaptchaSiteKey, verifyRecaptcha } from './utils';
+import { makeValidationMiddleware } from '../util/validator';
 
-export const newUserValidators = [
+export const newUserValidator = makeValidationMiddleware([
   body('firstName').notEmpty().withMessage('First name is required'),
   body('lastName').notEmpty().withMessage('Last name is required'),
   body('email').isEmail().withMessage('Valid email address is required'),
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
-];
+]);
 
 /**
  * Handles a HTTP request to /auth/newuser.
- * @param req The HTTP request.
- * @param res The HTTP response.
+ * @param req - The HTTP request.
+ * @param res - The HTTP response.
  */
 export async function newUserHandler(req: Request, res: Response): Promise<void> {
   const config = getConfig();
   if (config.registerEnabled === false) {
     // Explicitly check for "false" because the config value may be undefined
     sendOutcome(res, badRequest('Registration is disabled'));
-    return;
-  }
-
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    sendOutcome(res, invalidRequest(errors));
     return;
   }
 

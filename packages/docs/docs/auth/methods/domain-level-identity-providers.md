@@ -5,9 +5,9 @@ tags: [auth]
 
 # Domain-level Identity Providers
 
-A Domain-level Identity Provider (DL-IDP) is a server-level configuration that sets up an external identity provider for all users from a given domain. This identity provider will be used for *all* Medplum applications the user logs into, **including the Medplum App**. Domain-level providers are primarily used to ensure that all practitioners access Medplum data via your corporate identity solution.
+A Domain-level Identity Provider (DL-IDP) is a server-level configuration that sets up an external identity provider for all users from a given domain. This identity provider will be used for _all_ Medplum applications the user logs into, **including the Medplum App**. Domain-level providers are primarily used to ensure that all practitioners access Medplum data via your corporate identity solution.
 
-Once a DL-IDP is enabled for mydomain.com, any user that attempts to sign in with an email on that domain (name@mydomain.com) will be prompted to authenticate using the configured provider. Enabling DL-IDPs will apply to *all* emails at that domain, including dev accounts and name+text@mydomain.com type emails.
+Once a DL-IDP is enabled for mydomain.com, any user that attempts to sign in with an email on that domain (name@mydomain.com) will be prompted to authenticate using the configured provider. Enabling DL-IDPs will apply to _all_ emails at that domain, including dev accounts and name+text@mydomain.com type emails.
 
 This guide demonstrates how to set up a DL-IDP, using Okta as an example provider.
 
@@ -41,7 +41,7 @@ Use the following settings:
   - 🔲 Implicit (hybrid) - unchecked
 - Sign-in redirect URIs
   - 🔲 Allow wildcard - unchecked
-  - Callback URL - "{medplumApiServerBaseUrl}/auth/external"
+  - Callback URL - "\{medplumApiServerBaseUrl\}/auth/external"
     - For example:
       - Medplum hosted apiServerBaseUrl is "https://api.medplum.com"
       - So the callback URL is "https://api.medplum.com/auth/external"
@@ -78,18 +78,22 @@ Okta uses separate domains per organization. You will need your organization's O
 
 ![Okta Find URL](/img/auth/okta-find-url.png)
 
-The "baseUrl" could look something like this `dev-71569655.okta.com` or could be a named subdomain like `mydomain.okta.com`. Once you have obtained it, construct the Authorize, Token and UserInfo URLs as follows:
+The "baseUrl" could look something like this `https://dev-71569655.okta.com` or could be a named subdomain like `https://mydomain.okta.com`. Once you have obtained it, construct the Authorize, Token and UserInfo URLs as follows:
 
-- Authorize URL = ${baseUrl}/v1/authorize (e.g., "https://dev-71569655.okta.com/ oauth2/v1/authorize")
-- Token URL = ${baseUrl}/oauth2/v1/token (e.g., "https://dev-71569655.okta.com/oauth2/v1/token")
-- UserInfo URL = ${baseUrl}/oauth2/v1/userinfo (e.g., "https://dev-71569655.okta.com/oauth2/v1/userinfo")
+- Authorize URL = $\{baseUrl\}/v1/authorize (e.g., "https://dev-71569655.okta.com/oauth2/v1/authorize")
+- Token URL = $\{baseUrl\}/oauth2/v1/token (e.g., "https://dev-71569655.okta.com/oauth2/v1/token")
+- UserInfo URL = $\{baseUrl\}/oauth2/v1/userinfo (e.g., "https://dev-71569655.okta.com/oauth2/v1/userinfo")
 
 Client ID and Client secret will be the same as those obtained at the end of the previous section.
+
+Create a [`DomainConfiguration`](/docs/api/fhir/medplum/domainconfiguration) resource:
+
+- Add the values for the five elements above
+- Leave "useSubject" **unchecked**
+- Set the `domain` field to the users' email domain (e.g. "d) Once the resource has been saved, all new authentication requests from that domain will use Okta authentication.
 
 :::caution Note
 
 Configuring a DL-IDP on the Medplum Hosted service requires a Medplum team member, contact us at hello@medplum.com to enable. For those self-hosting, setup below requires super admin privileges.
 
 :::
-
-Create a [`DomainConfiguration`](/docs/api/fhir/medplum/domainconfiguration) resource with the five elements above and save. Once the resource has been saved, all new authentication requests from that domain will use Okta authentication.

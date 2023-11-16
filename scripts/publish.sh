@@ -9,11 +9,13 @@ PACKAGES=(
   "core"
   "definitions"
   "eslint-config"
+  "expo-polyfills"
   "fhir-router"
   "fhirtypes"
   "hl7"
   "mock"
   "react"
+  "react-hooks"
 )
 
 for package in ${PACKAGES[@]}; do

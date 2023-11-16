@@ -134,6 +134,7 @@ You will also be prompted for a parameter "Type". The default option is "String"
 | `DatabaseSecrets`      | The AWS Secret ID containing database connection details (created automatically by CDK). Only available when using AWS Parameter Store config. See [AWS Secrets](#aws-secrets).                       |          | `cdk`      |                                     |
 | `redis`                | The redis connection details as a JSON object. Only available when using JSON config file. See [AWS Secrets](#aws-secrets).                                                                           |          |            |                                     |
 | `RedisSecrets`         | The AWS Secret ID containing Redis connection details (created automatically by CDK). Only available when using AWS Parameter Store config. See [AWS Secrets](#aws-secrets).                          |          | `cdk`      |                                     |
+| `logRequests`          | Optional flag to log individual HTTP requests.                                                                                                                                                        |          |            | `false`                             |
 | `saveAuditEvents`      | Optional flag to save `AuditEvent` resources for all auth and RESTful operations in the database.                                                                                                     |          |            | `false`                             |
 | `logAuditEvents`       | Optional flag to log `AuditEvent` resources for all auth and RESTful operations to the logger.                                                                                                        |          |            | `false`                             |
 | `auditEventLogGroup`   | Optional AWS CloudWatch Log Group name for `AuditEvent` logs. If not specified, `AuditEvent` logs use the default logger.                                                                             |          |            |                                     |
@@ -192,3 +193,31 @@ Example `RedisSecrets` value:
   "tls": {}
 }
 ```
+
+### External Secrets
+
+Some users may want to load their config parameters from an external provider, such as the `AWS Parameter Store`.
+Medplum allows all CDK config settings (minus `region`) to be configured as `external secrets` by replacing the value with a JSON object with the following schema:
+
+```js
+{
+  "system": "<system_name>", // can be one of: ["aws_ssm_parameter_store"]
+  "key": "<key_to_access_secret>", // the key to access the secret at
+  "type": "<string | number | boolean>" // the primitive data type for the secret, used for coercing strings to native primitive types
+}
+```
+
+Example config with `external secrets`:
+
+```js
+{
+  "region": "us-east-1",
+  "apiPort": {
+    "system": "aws_ssm_parameter_store",
+    "key": "apiPort",
+    "type": "number"
+  }
+}
+```
+
+Any parameter specified in the `external secrets` format will automatically be fetched at deployment time, right before the `CloudFormation` stack is created. This both keeps your secrets safe and also reduces the amount of manual maintenance you must perform on your Medplum configuration over the lifetime of your application.

@@ -1,47 +1,47 @@
 {
   "name": "medplum-demo-bots",
-  "version": "2.1.6",
+  "version": "2.1.14",
   "description": "Medplum Demo Bots",
+  "license": "Apache-2.0",
+  "author": "Medplum <hello@medplum.com>",
   "scripts": {
     "build": "tsc",
-    "test": "vitest run",
-    "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/",
     "prettier": "prettier --write .",
-    "lint": "eslint src/"
-  },
-  "author": "Medplum <hello@medplum.com>",
-  "license": "Apache-2.0",
-  "devDependencies": {
-    "@medplum/cli": "2.1.6",
-    "@medplum/core": "2.1.6",
-    "@medplum/eslint-config": "2.1.6",
-    "@medplum/fhirtypes": "2.1.6",
-    "@medplum/mock": "2.1.6",
-    "@types/node": "20.8.6",
-    "@types/node-fetch": "2.6.6",
-    "@types/ssh2-sftp-client": "9.0.1",
-    "@vitest/coverage-v8": "0.34.6",
-    "@vitest/ui": "0.34.6",
-    "form-data": "4.0.0",
-    "node-fetch": "2.7.0",
-    "pdfmake": "0.2.7",
-    "ssh2-sftp-client": "9.1.0",
-    "stripe": "13.10.0",
-    "typescript": "5.2.2",
-    "vitest": "0.34.6"
-  },
-  "eslintConfig": {
-    "extends": [
-      "@medplum/eslint-config"
-    ]
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui"
   },
   "prettier": {
     "printWidth": 120,
     "singleQuote": true,
     "trailingComma": "es5"
   },
+  "eslintConfig": {
+    "extends": [
+      "@medplum/eslint-config"
+    ]
+  },
   "dependencies": {
-    "esbuild": "0.19.4"
+    "esbuild": "0.19.5"
+  },
+  "devDependencies": {
+    "@medplum/cli": "2.1.14",
+    "@medplum/core": "2.1.14",
+    "@medplum/eslint-config": "2.1.14",
+    "@medplum/fhirtypes": "2.1.14",
+    "@medplum/mock": "2.1.14",
+    "@types/node": "20.9.0",
+    "@types/node-fetch": "2.6.9",
+    "@types/ssh2-sftp-client": "9.0.3",
+    "@vitest/coverage-v8": "0.34.6",
+    "@vitest/ui": "0.34.6",
+    "form-data": "4.0.0",
+    "node-fetch": "2.7.0",
+    "pdfmake": "0.2.8",
+    "ssh2-sftp-client": "9.1.0",
+    "stripe": "14.3.0",
+    "typescript": "5.2.2",
+    "vitest": "0.34.6"
   }
 }

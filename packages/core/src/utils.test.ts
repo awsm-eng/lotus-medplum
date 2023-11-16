@@ -22,6 +22,7 @@ import {
   getIdentifier,
   getImageSrc,
   getQuestionnaireAnswers,
+  getReferenceString,
   isLowerCase,
   isProfileResource,
   isUUID,
@@ -36,6 +37,7 @@ import {
   ResourceWithCode,
   setCodeBySystem,
   setIdentifier,
+  splitN,
   stringify,
 } from './utils';
 
@@ -73,10 +75,15 @@ describe('Core Utils', () => {
     });
   });
 
+  test('getReferenceString', () => {
+    expect(getReferenceString({ resourceType: 'Patient', id: '123' })).toBe('Patient/123');
+    expect(getReferenceString({ reference: 'Patient/123' })).toBe('Patient/123');
+  });
+
   test('resolveId', () => {
     expect(resolveId(undefined)).toBeUndefined();
     expect(resolveId({})).toBeUndefined();
-    expect(resolveId({ id: '123' })).toBeUndefined();
+    expect(resolveId({ id: '123' })).toBe('123');
     expect(resolveId({ reference: 'Patient' })).toBeUndefined();
     expect(resolveId({ reference: 'Patient/123' })).toBe('123');
   });
@@ -982,5 +989,12 @@ describe('Core Utils', () => {
 
     const result = findResourceByCode(observations, codeToFindAsString, system);
     expect(result).toEqual(observations[0]);
+  });
+
+  test('splitN', () => {
+    expect(
+      splitN('_has:Observation:subject:encounter:Encounter._has:DiagnosticReport:encounter:result.status', ':', 3)
+    ).toEqual(['_has', 'Observation', 'subject:encounter:Encounter._has:DiagnosticReport:encounter:result.status']);
+    expect(splitN('organization', ':', 2)).toEqual(['organization']);
   });
 });

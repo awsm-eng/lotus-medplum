@@ -1,5 +1,6 @@
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 import { GetParametersByPathCommand, SSMClient } from '@aws-sdk/client-ssm';
+import { splitN } from '@medplum/core';
 import { KeepJobs } from 'bullmq';
 import { mkdtempSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -37,6 +38,7 @@ export interface MedplumServerConfig {
   botLambdaRoleArn: string;
   botLambdaLayerName: string;
   botCustomFunctionsEnabled?: boolean;
+  logRequests?: boolean;
   logAuditEvents?: boolean;
   saveAuditEvents?: boolean;
   auditEventLogGroup?: string;
@@ -46,6 +48,7 @@ export interface MedplumServerConfig {
   introspectionEnabled?: boolean;
   keepAliveTimeout?: number;
   vmContextBotsEnabled?: boolean;
+  shutdownTimeoutMilliseconds?: number;
 }
 
 /**
@@ -96,11 +99,11 @@ export function getConfig(): MedplumServerConfig {
  * The identifier must start with one of the following prefixes:
  *   1) "file:" string followed by relative path.
  *   2) "aws:" followed by AWS SSM path prefix.
- * @param configName The medplum config identifier.
+ * @param configName - The medplum config identifier.
  * @returns The loaded configuration.
  */
 export async function loadConfig(configName: string): Promise<MedplumServerConfig> {
-  const [configType, configPath] = splitOnce(configName, ':');
+  const [configType, configPath] = splitN(configName, ':', 2);
   switch (configType) {
     case 'env':
       cachedConfig = loadEnvConfig();
@@ -175,7 +178,7 @@ function loadEnvConfig(): MedplumServerConfig {
 /**
  * Loads configuration settings from a JSON file.
  * Path relative to the current working directory at runtime.
- * @param path The config file path.
+ * @param path - The config file path.
  * @returns The configuration.
  */
 async function loadFileConfig(path: string): Promise<MedplumServerConfig> {
@@ -184,13 +187,13 @@ async function loadFileConfig(path: string): Promise<MedplumServerConfig> {
 
 /**
  * Loads configuration settings from AWS SSM Parameter Store.
- * @param path The AWS SSM Parameter Store path prefix.
+ * @param path - The AWS SSM Parameter Store path prefix.
  * @returns The loaded configuration.
  */
 async function loadAwsConfig(path: string): Promise<MedplumServerConfig> {
   let region = DEFAULT_AWS_REGION;
   if (path.includes(':')) {
-    [region, path] = splitOnce(path, ':');
+    [region, path] = splitN(path, ':', 2);
   }
 
   const client = new SSMClient({ region });
@@ -230,8 +233,8 @@ async function loadAwsConfig(path: string): Promise<MedplumServerConfig> {
 
 /**
  * Returns the AWS Database Secret data as a JSON map.
- * @param region The AWS region.
- * @param secretId Secret ARN
+ * @param region - The AWS region.
+ * @param secretId - Secret ARN
  * @returns The secret data as a JSON map.
  */
 async function loadAwsSecrets(region: string, secretId: string): Promise<Record<string, any> | undefined> {
@@ -247,7 +250,7 @@ async function loadAwsSecrets(region: string, secretId: string): Promise<Record<
 
 /**
  * Adds default values to the config.
- * @param config The input config as loaded from the config file.
+ * @param config - The input config as loaded from the config file.
  * @returns The config with default values added.
  */
 function addDefaults(config: MedplumServerConfig): MedplumServerConfig {
@@ -263,15 +266,8 @@ function addDefaults(config: MedplumServerConfig): MedplumServerConfig {
   config.botLambdaLayerName = config.botLambdaLayerName || 'medplum-bot-layer';
   config.bcryptHashSalt = config.bcryptHashSalt || 10;
   config.bullmq = { removeOnComplete: { count: 1 }, removeOnFail: { count: 1 }, ...config.bullmq };
+  config.shutdownTimeoutMilliseconds = config.shutdownTimeoutMilliseconds ?? 30000;
   return config;
-}
-
-function splitOnce(value: string, delimiter: string): [string, string] {
-  const index = value.indexOf(delimiter);
-  if (index === -1) {
-    return [value, ''];
-  }
-  return [value.substring(0, index), value.substring(index + 1)];
 }
 
 function isIntegerConfig(key: string): boolean {
@@ -279,5 +275,10 @@ function isIntegerConfig(key: string): boolean {
 }
 
 function isBooleanConfig(key: string): boolean {
-  return key === 'botCustomFunctionsEnabled' || key === 'logAuditEvents' || key === 'registerEnabled';
+  return (
+    key === 'botCustomFunctionsEnabled' ||
+    key === 'logRequests' ||
+    key === 'logAuditEvents' ||
+    key === 'registerEnabled'
+  );
 }

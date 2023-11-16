@@ -32,9 +32,9 @@ On the "Configuration Data" tab:
 
 1. Check "Use Existing Auth Token" (the built-in authentication only works with Auth0)
 2. Enter the Hub URL for your Medplum server
-   a. Add "/fhircast/STU2" to your Medplum server base URL
-   b. For Medplum cloud hosted: https://api.medplum.com/fhircast/STU2
-   c. By default for running from source: http://localhost:8103/fhircast/STU2
+   a. Add "/fhircast/STU3" to your Medplum server base URL
+   b. For Medplum cloud hosted: https://api.medplum.com/fhircast/STU3
+   c. By default for running from source: http://localhost:8103/fhircast/STU3
 3. Enter your FHIRcast topic
 4. Enter your Medplum server auth token (see [Auth and Identity](http://localhost:3000/docs/auth) to get started)
 
@@ -42,7 +42,7 @@ On the "Configuration Data" tab:
 
 Next, on the "Subscribe" tab:
 
-1. Enter which events you would like to subscribe to (i.e., "patient-open")
+1. Enter which events you would like to subscribe to (i.e., "Patient-open")
 2. Click "Subscribe"
 
 If all goes well, you should see "Success" messages in the event log:

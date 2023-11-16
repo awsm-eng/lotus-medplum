@@ -1,38 +1,33 @@
 import { badRequest, createReference, ProfileResource } from '@medplum/core';
 import { ClientApplication, Login, Project, ProjectMembership, Reference, User } from '@medplum/fhirtypes';
 import { Request, Response } from 'express';
-import { body, validationResult } from 'express-validator';
+import { body } from 'express-validator';
 import { createClient } from '../admin/client';
-import { invalidRequest, sendOutcome } from '../fhir/outcomes';
+import { sendOutcome } from '../fhir/outcomes';
 import { systemRepo } from '../fhir/repo';
 import { setLoginMembership } from '../oauth/utils';
 import { createProfile, createProjectMembership } from './utils';
 import { getRequestContext } from '../context';
+import { makeValidationMiddleware } from '../util/validator';
 
 export interface NewProjectRequest {
   readonly loginId: string;
   readonly projectName: string;
 }
 
-export const newProjectValidators = [
+export const newProjectValidator = makeValidationMiddleware([
   body('login').notEmpty().withMessage('Missing login'),
   body('projectName').notEmpty().withMessage('Project name is required'),
-];
+]);
 
 /**
  * Handles a HTTP request to /auth/newproject.
  * Requires a partial login.
  * Creates a Project, Profile, ProjectMembership, and default ClientApplication.
- * @param req The HTTP request.
- * @param res The HTTP response.
+ * @param req - The HTTP request.
+ * @param res - The HTTP response.
  */
 export async function newProjectHandler(req: Request, res: Response): Promise<void> {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    sendOutcome(res, invalidRequest(errors));
-    return;
-  }
-
   const login = await systemRepo.readResource<Login>('Login', req.body.login);
 
   if (login.membership) {
@@ -56,10 +51,10 @@ export async function newProjectHandler(req: Request, res: Response): Promise<vo
 
 /**
  * Creates a new project.
- * @param login The partial login.
- * @param projectName The new project name.
- * @param firstName The practitioner's first name.
- * @param lastName The practitioner's last name.
+ * @param login - The partial login.
+ * @param projectName - The new project name.
+ * @param firstName - The practitioner's first name.
+ * @param lastName - The practitioner's last name.
  * @returns The new project membership.
  */
 export async function createProject(

@@ -21,7 +21,7 @@ import { sendOutcome } from './fhir/outcomes';
 import { fhirRouter } from './fhir/routes';
 import { initBinaryStorage } from './fhir/storage';
 import { loadStructureDefinitions } from './fhir/structure';
-import { fhircastRouter } from './fhircast/routes';
+import { fhircastSTU2Router, fhircastSTU3Router } from './fhircast/routes';
 import { healthcheckHandler } from './healthcheck';
 import { hl7BodyParser } from './hl7/parser';
 import { globalLogger } from './logger';
@@ -41,9 +41,9 @@ let server: http.Server | undefined = undefined;
 
 /**
  * Sets standard headers for all requests.
- * @param _req The request.
- * @param res The response.
- * @param next The next handler.
+ * @param _req - The request.
+ * @param res - The response.
+ * @param next - The next handler.
  */
 function standardHeaders(_req: Request, res: Response, next: NextFunction): void {
   // Disables all caching
@@ -81,10 +81,10 @@ function standardHeaders(_req: Request, res: Response, next: NextFunction): void
 /**
  * Global error handler.
  * See: https://expressjs.com/en/guide/error-handling.html
- * @param err Unhandled error.
- * @param req The request.
- * @param res The response.
- * @param next The next handler.
+ * @param err - Unhandled error.
+ * @param req - The request.
+ * @param res - The response.
+ * @param next - The next handler.
  */
 function errorHandler(err: any, req: Request, res: Response, next: NextFunction): void {
   if (res.headersSent) {
@@ -153,6 +153,10 @@ export async function initApp(app: Express, config: MedplumServerConfig): Promis
     })
   );
 
+  if (config.logRequests) {
+    app.use(loggingMiddleware);
+  }
+
   const apiRouter = Router();
   apiRouter.get('/', (_req, res) => res.sendStatus(200));
   apiRouter.get('/robots.txt', (_req, res) => res.type(ContentType.TEXT).send('User-agent: *\nDisallow: /'));
@@ -164,7 +168,8 @@ export async function initApp(app: Express, config: MedplumServerConfig): Promis
   apiRouter.use('/dicom/PS3/', dicomRouter);
   apiRouter.use('/email/v1/', emailRouter);
   apiRouter.use('/fhir/R4/', fhirRouter);
-  apiRouter.use('/fhircast/STU2/', fhircastRouter);
+  apiRouter.use('/fhircast/STU2/', fhircastSTU2Router);
+  apiRouter.use('/fhircast/STU3/', fhircastSTU3Router);
   apiRouter.use('/oauth2/', oauthRouter);
   apiRouter.use('/scim/v2/', scimRouter);
   apiRouter.use('/storage/', storageRouter);
@@ -205,3 +210,30 @@ export async function shutdownApp(): Promise<void> {
     rmSync(binaryStorage.replace('file:', ''), { recursive: true, force: true });
   }
 }
+
+const loggingMiddleware = (req: Request, res: Response, next: NextFunction): void => {
+  const ctx = getRequestContext();
+  const start = new Date();
+
+  res.on('finish', () => {
+    const duration = new Date().getTime() - start.getTime();
+
+    let userProfile: string | undefined;
+    if (ctx instanceof AuthenticatedRequestContext) {
+      userProfile = ctx.profile.reference;
+    }
+
+    ctx.logger.info('Request served', {
+      duration: `${duration} ms`,
+      ip: req.ip,
+      method: req.method,
+      path: req.path,
+      profile: userProfile,
+      receivedAt: start,
+      status: res.statusCode,
+      ua: req.get('User-Agent'),
+    });
+  });
+
+  next();
+};

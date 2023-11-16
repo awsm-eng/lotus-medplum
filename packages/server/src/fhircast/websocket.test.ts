@@ -4,7 +4,7 @@ import express from 'express';
 import { Server } from 'http';
 import request from 'superwstest';
 import { initApp, shutdownApp } from '../app';
-import { loadTestConfig, MedplumServerConfig } from '../config';
+import { MedplumServerConfig, loadTestConfig } from '../config';
 import { initTestAuth } from '../test.setup';
 
 const app = express();
@@ -39,7 +39,7 @@ describe('FHIRCast WebSocket', () => {
       })
       .exec(async () => {
         const res = await request(server)
-          .post(`/fhircast/STU2/${topic}`)
+          .post(`/fhircast/STU3/${topic}`)
           .set('Content-Type', ContentType.JSON)
           .set('Authorization', 'Bearer ' + accessToken)
           .send({
@@ -47,7 +47,7 @@ describe('FHIRCast WebSocket', () => {
             id: randomUUID(),
             event: {
               'hub.topic': topic,
-              'hub.event': 'patient-open',
+              'hub.event': 'Patient-open',
               context: [
                 {
                   key: 'patient',
@@ -65,7 +65,7 @@ describe('FHIRCast WebSocket', () => {
       .expectJson((obj) => {
         // Event message
         expect(obj.event['hub.topic']).toBe(topic);
-        expect(obj.event['hub.event']).toBe('patient-open');
+        expect(obj.event['hub.event']).toBe('Patient-open');
       })
       .sendJson({ ok: true })
       .close()

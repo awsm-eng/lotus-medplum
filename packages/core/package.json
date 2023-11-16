@@ -1,45 +1,7 @@
 {
   "name": "@medplum/core",
-  "version": "2.1.6",
+  "version": "2.1.14",
   "description": "Medplum TS/JS Library",
-  "author": "Medplum <hello@medplum.com>",
-  "license": "Apache-2.0",
-  "homepage": "https://www.medplum.com/",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/medplum/medplum.git",
-    "directory": "packages/core"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "scripts": {
-    "clean": "rimraf dist",
-    "build": "npm run clean && tsc --project tsconfig.build.json && node esbuild.mjs",
-    "test": "jest"
-  },
-  "devDependencies": {
-    "@medplum/definitions": "*",
-    "@medplum/fhirtypes": "*",
-    "jest-websocket-mock": "2.5.0"
-  },
-  "peerDependencies": {
-    "pdfmake": "^0.2.5"
-  },
-  "peerDependenciesMeta": {
-    "pdfmake": {
-      "optional": true
-    }
-  },
-  "types": "dist/types/index.d.ts",
-  "main": "dist/cjs/index.cjs",
-  "module": "dist/esm/index.mjs",
-  "exports": {
-    "types": "./dist/types/index.d.ts",
-    "require": "./dist/cjs/index.cjs",
-    "import": "./dist/esm/index.mjs"
-  },
-  "sideEffects": false,
   "keywords": [
     "medplum",
     "fhir",
@@ -54,5 +16,48 @@
     "stu3",
     "r4",
     "normative"
-  ]
+  ],
+  "homepage": "https://www.medplum.com/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/medplum/medplum.git",
+    "directory": "packages/core"
+  },
+  "license": "Apache-2.0",
+  "author": "Medplum <hello@medplum.com>",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "types": "./dist/types.d.ts",
+    "require": "./dist/cjs/index.cjs",
+    "import": "./dist/esm/index.mjs"
+  },
+  "main": "dist/cjs/index.cjs",
+  "module": "dist/esm/index.mjs",
+  "types": "dist/types.d.ts",
+  "scripts": {
+    "api-extractor": "api-extractor run --local",
+    "api-documenter": "api-documenter markdown --input-folder ./dist/api/ --output-folder ./dist/docs/",
+    "build": "npm run clean && tsc --project tsconfig.build.json && node esbuild.mjs && npm run api-extractor && npm run api-documenter",
+    "clean": "rimraf dist",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@medplum/definitions": "*",
+    "@medplum/fhirtypes": "*",
+    "@types/jest": "^29.5.5",
+    "jest": "^29.7.0",
+    "jest-websocket-mock": "2.5.0"
+  },
+  "peerDependencies": {
+    "pdfmake": "^0.2.5"
+  },
+  "peerDependenciesMeta": {
+    "pdfmake": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }
