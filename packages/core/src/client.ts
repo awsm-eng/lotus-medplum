@@ -65,7 +65,7 @@ import {
   validationError,
 } from './outcomes';
 import { ReadablePromise } from './readablepromise';
-import { ClientStorage } from './storage';
+import { ClientStorage, IClientStorage } from './storage';
 import { indexSearchParameter } from './types';
 import { indexStructureDefinitionBundle, isDataTypeLoaded } from './typeschema/types';
 import {
@@ -213,7 +213,7 @@ export interface MedplumClientOptions {
    *
    * Default is window.localStorage (if available), this is the common implementation for use in the browser, or an in-memory storage implementation.  If using Medplum on a server it may be useful to provide a custom storage implementation, for example using redis, a database or a file based storage.  Medplum CLI is an an example of `FileSystemStorage`, for reference.
    */
-  storage?: ClientStorage;
+  storage?: IClientStorage;
 
   /**
    * Create PDF implementation.
@@ -434,7 +434,7 @@ export interface PatchOperation {
 /**
  * Source for a FHIR Binary.
  */
-export type BinarySource = string | File | Blob | Uint8Array;
+export type BinarySource = string | File | Blob | Uint8Array | ReadableStream;
 
 /**
  * Email address definition.
@@ -631,7 +631,7 @@ export class MedplumClient extends EventTarget {
   private readonly options: MedplumClientOptions;
   private readonly fetch: FetchLike;
   private readonly createPdfImpl?: CreatePdfFunction;
-  private readonly storage: ClientStorage;
+  private readonly storage: IClientStorage;
   private readonly requestCache: LRUCache<RequestCacheEntry> | undefined;
   private readonly cacheTime: number;
   private readonly baseUrl: string;
@@ -652,6 +652,8 @@ export class MedplumClient extends EventTarget {
   private profilePromise?: Promise<any>;
   private sessionDetails?: SessionDetails;
   private basicAuth?: string;
+  private initPromise: Promise<void>;
+  private initComplete = true;
 
   constructor(options?: MedplumClientOptions) {
     super();
@@ -692,15 +694,48 @@ export class MedplumClient extends EventTarget {
 
     if (options?.accessToken) {
       this.setAccessToken(options.accessToken);
+      this.initPromise = Promise.resolve();
+    } else if (this.storage.getInitPromise !== undefined) {
+      const storageInitPromise = this.storage.getInitPromise();
+      const initPromise = new Promise<void>((resolve) => {
+        storageInitPromise
+          .then(() => {
+            this.attemptResumeActiveLogin().then(resolve).catch(console.error);
+            this.initComplete = true;
+          })
+          .catch(console.error);
+      });
+      this.initPromise = initPromise;
+      this.initComplete = false;
     } else {
-      const activeLogin = this.getActiveLogin();
-      if (activeLogin) {
-        this.setAccessToken(activeLogin.accessToken, activeLogin.refreshToken);
-        this.refreshProfile().catch(console.log);
-      }
+      this.initPromise = this.attemptResumeActiveLogin().catch(console.error);
     }
 
     this.setupStorageListener();
+  }
+
+  /**
+   * @returns Whether the client has been fully initialized or not. Should always be true unless a custom asynchronous `ClientStorage` was passed into the constructor.
+   */
+  get isInitialized(): boolean {
+    return this.initComplete;
+  }
+
+  /**
+   * Gets a Promise that resolves when async initialization is complete. This is particularly useful for waiting for an async `ClientStorage` and/or authentication to finish.
+   * @returns A Promise that resolves when any async initialization of the client is finished.
+   */
+  getInitPromise(): Promise<void> {
+    return this.initPromise;
+  }
+
+  private async attemptResumeActiveLogin(): Promise<void> {
+    const activeLogin = this.getActiveLogin();
+    if (!activeLogin) {
+      return;
+    }
+    this.setAccessToken(activeLogin.accessToken, activeLogin.refreshToken);
+    await this.refreshProfile();
   }
 
   /**
@@ -1850,7 +1885,17 @@ export class MedplumClient extends EventTarget {
       xhr.setRequestHeader('Cache-Control', 'no-cache, no-store, max-age=0');
       xhr.setRequestHeader('Content-Type', contentType);
       xhr.setRequestHeader('X-Medplum', 'extended');
-      xhr.send(data);
+      if (data instanceof ReadableStream) {
+        const writableStream = new WritableStream({
+          write(chunk) {
+            xhr.send(chunk);
+          },
+        });
+
+        data.pipeTo(writableStream).catch(console.error);
+      } else {
+        xhr.send(data);
+      }
     });
   }
 
@@ -1968,15 +2013,15 @@ export class MedplumClient extends EventTarget {
     if (!resource.id) {
       throw new Error('Missing id');
     }
-    this.invalidateSearches(resource.resourceType);
     let result = await this.put(this.fhirUrl(resource.resourceType, resource.id), resource, undefined, options);
     if (!result) {
       // On 304 not modified, result will be undefined
       // Return the user input instead
-      // return result ?? resource;
       result = resource;
     }
     this.cacheResource(result);
+    this.invalidateUrl(this.fhirUrl(resource.resourceType, resource.id, '_history'));
+    this.invalidateSearches(resource.resourceType);
     return result;
   }
 
