@@ -180,7 +180,7 @@ export interface MedplumClientOptions {
   /**
    * The length of time in milliseconds to cache resources.
    *
-   * Default value is 10000 (10 seconds).
+   * Default value is 60000 (60 seconds).
    *
    * Cache time of zero disables all caching.
    *
@@ -434,7 +434,7 @@ export interface PatchOperation {
 /**
  * Source for a FHIR Binary.
  */
-export type BinarySource = string | File | Blob | Uint8Array | ReadableStream;
+export type BinarySource = string | File | Blob | Uint8Array;
 
 /**
  * Email address definition.
@@ -1191,7 +1191,7 @@ export class MedplumClient extends EventTarget {
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('client_id', clientId);
     url.searchParams.set('redirect_uri', redirectUri);
-    url.searchParams.set('scope', 'openid profile email');
+    url.searchParams.set('scope', loginRequest.scope ?? 'openid profile email');
     url.searchParams.set('state', JSON.stringify(loginRequest));
 
     if (pkceEnabled) {
@@ -1794,16 +1794,18 @@ export class MedplumClient extends EventTarget {
    * @param data - The binary data to upload.
    * @param filename - Optional filename for the binary.
    * @param contentType - Content type for the binary.
-   * @param onProgress - Optional callback for progress events.
+   * @param onProgress - Optional callback for progress events. **NOTE:** only `options.signal` is respected when `onProgress` is also provided.
+   * @param options - Optional fetch options. **NOTE:** only `options.signal` is respected when `onProgress` is also provided.
    * @returns The result of the create operation.
    */
   async createAttachment(
     data: BinarySource,
     filename: string | undefined,
     contentType: string,
-    onProgress?: (e: ProgressEvent) => void
+    onProgress?: (e: ProgressEvent) => void,
+    options?: RequestInit
   ): Promise<Attachment> {
-    const binary = await this.createBinary(data, filename, contentType, onProgress);
+    const binary = await this.createBinary(data, filename, contentType, onProgress, options);
     return {
       contentType,
       url: binary.url,
@@ -1833,14 +1835,16 @@ export class MedplumClient extends EventTarget {
    * @param data - The binary data to upload.
    * @param filename - Optional filename for the binary.
    * @param contentType - Content type for the binary.
-   * @param onProgress - Optional callback for progress events.
+   * @param onProgress - Optional callback for progress events. **NOTE:** only `options.signal` is respected when `onProgress` is also provided.
+   * @param options - Optional fetch options. **NOTE:** only `options.signal` is respected when `onProgress` is also provided.
    * @returns The result of the create operation.
    */
   createBinary(
     data: BinarySource,
     filename: string | undefined,
     contentType: string,
-    onProgress?: (e: ProgressEvent) => void
+    onProgress?: (e: ProgressEvent) => void,
+    options?: RequestInit
   ): Promise<Binary> {
     const url = this.fhirUrl('Binary');
     if (filename) {
@@ -1848,9 +1852,9 @@ export class MedplumClient extends EventTarget {
     }
 
     if (onProgress) {
-      return this.uploadwithProgress(url, data, contentType, onProgress);
+      return this.uploadwithProgress(url, data, contentType, onProgress, options);
     } else {
-      return this.post(url, data, contentType);
+      return this.post(url, data, contentType, options);
     }
   }
 
@@ -1858,13 +1862,29 @@ export class MedplumClient extends EventTarget {
     url: URL,
     data: BinarySource,
     contentType: string,
-    onProgress: (e: ProgressEvent) => void
+    onProgress: (e: ProgressEvent) => void,
+    options?: RequestInit
   ): Promise<any> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
+
+      // Ensure the 'abort' event listener is removed from the signal to prevent memory leaks,
+      // especially in scenarios where there is a long-lived signal across multiple requests.
+      const handleSignalAbort = (): void => xhr.abort();
+      options?.signal?.addEventListener('abort', handleSignalAbort);
+      const sendResult = (result: any): void => {
+        options?.signal?.removeEventListener('abort', handleSignalAbort);
+
+        if (result instanceof Error) {
+          reject(result);
+        } else {
+          resolve(result);
+        }
+      };
+
       xhr.responseType = 'json';
-      xhr.onabort = () => reject(new Error('Request aborted'));
-      xhr.onerror = () => reject(new Error('Request error'));
+      xhr.onabort = () => sendResult(new Error('Request aborted'));
+      xhr.onerror = () => sendResult(new Error('Request error'));
 
       if (onProgress) {
         xhr.upload.onprogress = (e) => onProgress(e);
@@ -1873,9 +1893,9 @@ export class MedplumClient extends EventTarget {
 
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(xhr.response);
+          sendResult(xhr.response);
         } else {
-          reject(new OperationOutcomeError(normalizeOperationOutcome(xhr.response || xhr.statusText)));
+          sendResult(new OperationOutcomeError(normalizeOperationOutcome(xhr.response || xhr.statusText)));
         }
       };
 
@@ -1885,17 +1905,7 @@ export class MedplumClient extends EventTarget {
       xhr.setRequestHeader('Cache-Control', 'no-cache, no-store, max-age=0');
       xhr.setRequestHeader('Content-Type', contentType);
       xhr.setRequestHeader('X-Medplum', 'extended');
-      if (data instanceof ReadableStream) {
-        const writableStream = new WritableStream({
-          write(chunk) {
-            xhr.send(chunk);
-          },
-        });
-
-        data.pipeTo(writableStream).catch(console.error);
-      } else {
-        xhr.send(data);
-      }
+      xhr.send(data);
     });
   }
 
@@ -2306,22 +2316,25 @@ export class MedplumClient extends EventTarget {
    * @param destination - The destination device.
    * @param body - The message body.
    * @param contentType - Optional message content type.
+   * @param waitForResponse - Optional wait for response flag.
    * @param options - Optional fetch options.
-   * @returns Promise to the operation outcome.
+   * @returns Promise to the result. If waiting for response, the result is the response body. Otherwise, it is an operation outcome.
    */
   pushToAgent(
     agent: Agent | Reference<Agent>,
     destination: Device | Reference<Device>,
     body: any,
     contentType?: string,
+    waitForResponse?: boolean,
     options?: RequestInit
-  ): Promise<OperationOutcome> {
+  ): Promise<any> {
     return this.post(
       this.fhirUrl('Agent', resolveId(agent) as string, '$push'),
       {
         destination: getReferenceString(destination),
         body,
         contentType,
+        waitForResponse,
       },
       ContentType.FHIR_JSON,
       options
