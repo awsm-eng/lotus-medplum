@@ -11,7 +11,13 @@ import { adminRouter } from './admin/routes';
 import { asyncWrap } from './async';
 import { authRouter } from './auth/routes';
 import { getConfig, MedplumServerConfig } from './config';
-import { attachRequestContext, AuthenticatedRequestContext, getRequestContext, requestContextStore } from './context';
+import {
+  attachRequestContext,
+  AuthenticatedRequestContext,
+  closeRequestContext,
+  getRequestContext,
+  requestContextStore,
+} from './context';
 import { corsOptions } from './cors';
 import { closeDatabase, initDatabase } from './database';
 import { dicomRouter } from './dicom/routes';
@@ -25,7 +31,6 @@ import { fhircastSTU2Router, fhircastSTU3Router } from './fhircast/routes';
 import { healthcheckHandler } from './healthcheck';
 import { cleanupHeartbeat, initHeartbeat } from './heartbeat';
 import { hl7BodyParser } from './hl7/parser';
-import { initOpenTelemetry, shutdownOpenTelemetry } from './instrumentation';
 import { globalLogger } from './logger';
 import { initKeys } from './oauth/keys';
 import { oauthRouter } from './oauth/routes';
@@ -95,6 +100,7 @@ function standardHeaders(_req: Request, res: Response, next: NextFunction): void
  * @param next - The next handler.
  */
 function errorHandler(err: any, req: Request, res: Response, next: NextFunction): void {
+  closeRequestContext();
   if (res.headersSent) {
     next(err);
     return;
@@ -190,15 +196,14 @@ export async function initApp(app: Express, config: MedplumServerConfig): Promis
 
 export function initAppServices(config: MedplumServerConfig): Promise<void> {
   return requestContextStore.run(AuthenticatedRequestContext.system(), async () => {
-    initOpenTelemetry(config);
     loadStructureDefinitions();
     initRedis(config.redis);
-    await initDatabase(config.database);
+    await initDatabase(config);
     await seedDatabase();
     await initKeys(config);
     initBinaryStorage(config.binaryStorage);
     initWorkers(config);
-    initHeartbeat();
+    initHeartbeat(config);
   });
 }
 
@@ -209,7 +214,6 @@ export async function shutdownApp(): Promise<void> {
   await closeWebSockets();
   closeRedis();
   closeRateLimiter();
-  await shutdownOpenTelemetry();
 
   if (server) {
     server.close();
@@ -225,14 +229,16 @@ export async function shutdownApp(): Promise<void> {
 
 const loggingMiddleware = (req: Request, res: Response, next: NextFunction): void => {
   const ctx = getRequestContext();
-  const start = new Date();
+  const start = Date.now();
 
   res.on('finish', () => {
-    const duration = new Date().getTime() - start.getTime();
+    const duration = Date.now() - start;
 
     let userProfile: string | undefined;
+    let projectId: string | undefined;
     if (ctx instanceof AuthenticatedRequestContext) {
       userProfile = ctx.profile.reference;
+      projectId = ctx.project.id;
     }
 
     ctx.logger.info('Request served', {
@@ -241,6 +247,7 @@ const loggingMiddleware = (req: Request, res: Response, next: NextFunction): voi
       method: req.method,
       path: req.path,
       profile: userProfile,
+      projectId,
       receivedAt: start,
       status: res.statusCode,
       ua: req.get('User-Agent'),

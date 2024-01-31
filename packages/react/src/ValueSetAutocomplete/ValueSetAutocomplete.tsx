@@ -10,10 +10,10 @@ import {
 
 export interface ValueSetAutocompleteProps
   extends Omit<AsyncAutocompleteProps<ValueSetExpansionContains>, 'loadOptions' | 'toKey' | 'toOption'> {
-  binding: string | undefined;
-  creatable?: boolean;
-  clearable?: boolean;
-  expandParams?: Partial<ValueSetExpandParams>;
+  readonly binding: string | undefined;
+  readonly creatable?: boolean;
+  readonly clearable?: boolean;
+  readonly expandParams?: Partial<ValueSetExpandParams>;
 }
 
 function toKey(element: ValueSetExpansionContains): string {
@@ -86,11 +86,9 @@ export function ValueSetAutocomplete(props: ValueSetAutocompleteProps): JSX.Elem
       {...rest}
       creatable={creatable ?? true}
       clearable={clearable ?? true}
-      toKey={toKey}
       toOption={toOption}
       loadOptions={loadValues}
       onCreate={createValue}
-      getCreateLabel={creatable === false ? undefined : (query: any) => `+ Create ${query}`}
     />
   );
 }

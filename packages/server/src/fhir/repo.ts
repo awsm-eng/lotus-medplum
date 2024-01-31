@@ -30,6 +30,7 @@ import {
   satisfiedAccessPolicy,
   serverError,
   stringify,
+  toPeriod,
   tooManyRequests,
   validateResource,
   validateResourceType,
@@ -54,7 +55,7 @@ import { Operation, applyPatch } from 'rfc6902';
 import validator from 'validator';
 import { getConfig } from '../config';
 import { getRequestContext } from '../context';
-import { getClient } from '../database';
+import { getDatabasePool } from '../database';
 import { getRedis } from '../redis';
 import { r4ProjectId } from '../seed';
 import {
@@ -74,6 +75,7 @@ import { addBackgroundJobs } from '../workers';
 import { addSubscriptionJobs } from '../workers/subscription';
 import { validateResourceWithJsonSchema } from './jsonschema';
 import { AddressTable } from './lookups/address';
+import { CodingTable } from './lookups/coding';
 import { HumanNameTable } from './lookups/humanname';
 import { LookupTable } from './lookups/lookuptable';
 import { ReferenceTable } from './lookups/reference';
@@ -81,9 +83,10 @@ import { TokenTable } from './lookups/token';
 import { ValueSetElementTable } from './lookups/valuesetelement';
 import { getPatients } from './patient';
 import { validateReferences } from './references';
+import { getFullUrl } from './response';
 import { RewriteMode, rewriteAttachments } from './rewrite';
-import { buildSearchExpression, getFullUrl, searchImpl } from './search';
-import { Condition, DeleteQuery, Disjunction, Expression, InsertQuery, SelectQuery } from './sql';
+import { buildSearchExpression, searchImpl } from './search';
+import { Condition, DeleteQuery, Disjunction, Expression, InsertQuery, SelectQuery, periodToRangeString } from './sql';
 
 /**
  * The RepositoryContext interface defines standard metadata for repository actions.
@@ -168,6 +171,7 @@ const lookupTables: LookupTable<unknown>[] = [
   new TokenTable(),
   new ValueSetElementTable(),
   new ReferenceTable(),
+  new CodingTable(),
 ];
 
 /**
@@ -175,8 +179,11 @@ const lookupTables: LookupTable<unknown>[] = [
  * It is a thin layer on top of the database.
  * Repository instances should be created per author and project.
  */
-export class Repository extends BaseRepository implements FhirRepository {
+export class Repository extends BaseRepository implements FhirRepository<PoolClient> {
   private readonly context: RepositoryContext;
+  private conn?: PoolClient;
+  private transactionDepth = 0;
+  private closed = false;
 
   constructor(context: RepositoryContext) {
     super();
@@ -184,6 +191,10 @@ export class Repository extends BaseRepository implements FhirRepository {
     if (!this.context.author?.reference) {
       throw new Error('Invalid author reference');
     }
+  }
+
+  clone(): Repository {
+    return new Repository(this.context);
   }
 
   async createResource<T extends Resource>(resource: T): Promise<T> {
@@ -243,12 +254,11 @@ export class Repository extends BaseRepository implements FhirRepository {
   }
 
   private async readResourceFromDatabase<T extends Resource>(resourceType: string, id: string): Promise<T> {
-    const client = getClient();
     const builder = new SelectQuery(resourceType).column('content').column('deleted').where('id', '=', id);
 
     this.addSecurityFilters(builder, resourceType);
 
-    const rows = await builder.execute(client);
+    const rows = await builder.execute(this.getDatabaseClient());
     if (rows.length === 0) {
       throw new OperationOutcomeError(notFound);
     }
@@ -263,12 +273,10 @@ export class Repository extends BaseRepository implements FhirRepository {
   }
 
   private canReadCacheEntry(cacheEntry: CacheEntry): boolean {
-    if (
-      !this.isSuperAdmin() &&
-      this.context.project !== undefined &&
-      cacheEntry.projectId !== undefined &&
-      cacheEntry.projectId !== this.context.project
-    ) {
+    if (this.isSuperAdmin()) {
+      return true;
+    }
+    if (cacheEntry.projectId !== this.context.project) {
       return false;
     }
     if (!satisfiedAccessPolicy(cacheEntry.resource, AccessPolicyInteraction.READ, this.context.accessPolicy)) {
@@ -353,7 +361,6 @@ export class Repository extends BaseRepository implements FhirRepository {
         }
       }
 
-      const client = getClient();
       const rows = await new SelectQuery(resourceType + '_History')
         .column('versionId')
         .column('id')
@@ -362,7 +369,7 @@ export class Repository extends BaseRepository implements FhirRepository {
         .where('id', '=', id)
         .orderBy('lastUpdated', true)
         .limit(100)
-        .execute(client);
+        .execute(this.getDatabaseClient());
 
       const entries: BundleEntry<T>[] = [];
 
@@ -423,12 +430,11 @@ export class Repository extends BaseRepository implements FhirRepository {
         }
       }
 
-      const client = getClient();
       const rows = await new SelectQuery(resourceType + '_History')
         .column('content')
         .where('id', '=', id)
         .where('versionId', '=', vid)
-        .execute(client);
+        .execute(this.getDatabaseClient());
 
       if (rows.length === 0) {
         throw new OperationOutcomeError(notFound);
@@ -597,12 +603,14 @@ export class Repository extends BaseRepository implements FhirRepository {
   }
 
   private async loadProfile(url: string): Promise<StructureDefinition | undefined> {
-    const redis = getRedis();
-    const cacheKey = `Project/${this.context.project}/StructureDefinition/${url}`;
-    // Try retrieving from cache
-    const cachedProfile = await redis.get(cacheKey);
-    if (cachedProfile) {
-      return (JSON.parse(cachedProfile) as CacheEntry<StructureDefinition>).resource;
+    const projectId = this.context.project;
+
+    if (projectId) {
+      // Try retrieving from cache
+      const cachedProfile = await getProfileCacheEntry(projectId, url);
+      if (cachedProfile) {
+        return cachedProfile.resource;
+      }
     }
 
     // Fall back to loading from the DB; descending version sort approximates version resolution for some cases
@@ -623,14 +631,9 @@ export class Repository extends BaseRepository implements FhirRepository {
       ],
     });
 
-    if (profile) {
+    if (projectId && profile) {
       // Store loaded profile in cache
-      await redis.set(
-        cacheKey,
-        JSON.stringify({ resource: profile, projectId: profile.meta?.project }),
-        'EX',
-        24 * 60 * 60 // 24 hours in seconds
-      );
+      await setProfileCacheEntry(projectId, profile);
     }
     return profile;
   }
@@ -641,24 +644,11 @@ export class Repository extends BaseRepository implements FhirRepository {
    * @param resource - The resource to write to the database.
    */
   private async writeToDatabase<T extends Resource>(resource: T): Promise<void> {
-    // Note: We don't try/catch this because if connecting throws an exception.
-    // We don't need to dispose of the client (it will be undefined).
-    // https://node-postgres.com/features/transactions
-    const client = await getClient().connect();
-    try {
-      await client.query('BEGIN');
-      await Promise.all([
-        this.writeResource(client, resource),
-        this.writeResourceVersion(client, resource),
-        this.writeLookupTables(client, resource),
-      ]);
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    await this.withTransaction(async (client) => {
+      await this.writeResource(client, resource);
+      await this.writeResourceVersion(client, resource);
+      await this.writeLookupTables(client, resource);
+    });
   }
 
   /**
@@ -710,12 +700,11 @@ export class Repository extends BaseRepository implements FhirRepository {
     }
     const seconds = 60;
     const maxVersions = 10;
-    const client = getClient();
     const rows = await new SelectQuery(resourceType + '_History')
       .raw(`COUNT (DISTINCT "versionId")::int AS "count"`)
       .where('id', '=', id)
       .where('lastUpdated', '>', new Date(Date.now() - 1000 * seconds))
-      .execute(client);
+      .execute(this.getDatabaseClient());
     return rows[0].count >= maxVersions;
   }
 
@@ -747,7 +736,10 @@ export class Repository extends BaseRepository implements FhirRepository {
       throw new OperationOutcomeError(forbidden);
     }
 
-    const client = getClient();
+    // Do not use this.getDatabaseClient() for the cursor!
+    // That would cause a deadlock.
+    // Instead, use getDatabasePool() directly over a separate connection.
+    const client = getDatabasePool();
     const builder = new SelectQuery(resourceType).column({ tableName: resourceType, columnName: 'content' });
     this.addDeletedFilter(builder);
 
@@ -775,7 +767,10 @@ export class Repository extends BaseRepository implements FhirRepository {
       throw new OperationOutcomeError(forbidden);
     }
 
-    const client = getClient();
+    // Do not use this.getDatabaseClient() for the cursor!
+    // That would cause a deadlock.
+    // Instead, use getDatabasePool() directly over a separate connection.
+    const client = getDatabasePool();
     const builder = new SelectQuery(resourceType).column({ tableName: resourceType, columnName: 'content' });
     this.addDeletedFilter(builder);
 
@@ -801,8 +796,10 @@ export class Repository extends BaseRepository implements FhirRepository {
       throw new OperationOutcomeError(forbidden);
     }
 
-    const resource = await this.readResourceImpl<T>(resourceType, id);
-    return this.reindexResourceImpl(resource);
+    await this.withTransaction(async () => {
+      const resource = await this.readResourceImpl<T>(resourceType, id);
+      return this.reindexResourceImpl(resource);
+    });
   }
 
   /**
@@ -815,20 +812,10 @@ export class Repository extends BaseRepository implements FhirRepository {
   private async reindexResourceImpl<T extends Resource>(resource: T): Promise<void> {
     (resource.meta as Meta).compartment = this.getCompartments(resource);
 
-    // Note: We don't try/catch this because if connecting throws an exception.
-    // We don't need to dispose of the client (it will be undefined).
-    // https://node-postgres.com/features/transactions
-    const client = await getClient().connect();
-    try {
-      await client.query('BEGIN');
-      await Promise.all([this.writeResource(client, resource), this.writeLookupTables(client, resource)]);
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    await this.withTransaction(async (conn) => {
+      await this.writeResource(conn, resource);
+      await this.writeLookupTables(conn, resource);
+    });
   }
 
   /**
@@ -858,38 +845,41 @@ export class Repository extends BaseRepository implements FhirRepository {
 
       await deleteCacheEntry(resourceType, id);
 
-      const client = getClient();
-      const lastUpdated = new Date();
-      const content = '';
-      const columns: Record<string, any> = {
-        id,
-        lastUpdated,
-        deleted: true,
-        projectId: resource.meta?.project,
-        compartments: this.getCompartments(resource).map((ref) => resolveId(ref)),
-        content,
-      };
-
-      const searchParams = getSearchParameters(resourceType);
-      if (searchParams) {
-        for (const searchParam of Object.values(searchParams)) {
-          this.buildColumn({ resourceType } as Resource, columns, searchParam);
-        }
-      }
-
-      await new InsertQuery(resourceType, [columns]).mergeOnConflict().execute(client);
-
-      await new InsertQuery(resourceType + '_History', [
-        {
+      await this.withTransaction(async (conn) => {
+        const lastUpdated = new Date();
+        const content = '';
+        const columns: Record<string, any> = {
           id,
-          versionId: randomUUID(),
           lastUpdated,
+          deleted: true,
+          projectId: resource.meta?.project,
+          compartments: this.getCompartments(resource).map((ref) => resolveId(ref)),
           content,
-        },
-      ]).execute(client);
+        };
 
-      await this.deleteFromLookupTables(client, resource);
-      this.logEvent(DeleteInteraction, AuditEventOutcome.Success, undefined, resource);
+        const searchParams = getSearchParameters(resourceType);
+        if (searchParams) {
+          for (const searchParam of Object.values(searchParams)) {
+            this.buildColumn({ resourceType } as Resource, columns, searchParam);
+          }
+        }
+
+        await new InsertQuery(resourceType, [columns]).mergeOnConflict().execute(conn);
+
+        await new InsertQuery(resourceType + '_History', [
+          {
+            id,
+            versionId: randomUUID(),
+            lastUpdated,
+            content,
+          },
+        ]).execute(conn);
+
+        await this.deleteFromLookupTables(conn, resource);
+
+        this.logEvent(DeleteInteraction, AuditEventOutcome.Success, undefined, resource);
+      });
+
       await addSubscriptionJobs(resource, { interaction: 'delete' });
     } catch (err) {
       this.logEvent(DeleteInteraction, AuditEventOutcome.MinorFailure, err);
@@ -929,8 +919,8 @@ export class Repository extends BaseRepository implements FhirRepository {
     if (!this.isSuperAdmin()) {
       throw new OperationOutcomeError(forbidden);
     }
-    await new DeleteQuery(resourceType).where('id', '=', id).execute(getClient());
-    await new DeleteQuery(resourceType + '_History').where('id', '=', id).execute(getClient());
+    await new DeleteQuery(resourceType).where('id', '=', id).execute(this.getDatabaseClient());
+    await new DeleteQuery(resourceType + '_History').where('id', '=', id).execute(this.getDatabaseClient());
     await deleteCacheEntry(resourceType, id);
   }
 
@@ -944,8 +934,8 @@ export class Repository extends BaseRepository implements FhirRepository {
     if (!this.isSuperAdmin()) {
       throw new OperationOutcomeError(forbidden);
     }
-    await new DeleteQuery(resourceType).where('id', 'IN', ids).execute(getClient());
-    await new DeleteQuery(resourceType + '_History').where('id', 'IN', ids).execute(getClient());
+    await new DeleteQuery(resourceType).where('id', 'IN', ids).execute(this.getDatabaseClient());
+    await new DeleteQuery(resourceType + '_History').where('id', 'IN', ids).execute(this.getDatabaseClient());
     await deleteCacheEntries(resourceType, ids);
   }
 
@@ -959,8 +949,10 @@ export class Repository extends BaseRepository implements FhirRepository {
     if (!this.isSuperAdmin()) {
       throw new OperationOutcomeError(forbidden);
     }
-    await new DeleteQuery(resourceType).where('lastUpdated', '<=', before).execute(getClient());
-    await new DeleteQuery(resourceType + '_History').where('lastUpdated', '<=', before).execute(getClient());
+    await new DeleteQuery(resourceType).where('lastUpdated', '<=', before).execute(this.getDatabaseClient());
+    await new DeleteQuery(resourceType + '_History')
+      .where('lastUpdated', '<=', before)
+      .execute(this.getDatabaseClient());
   }
 
   async search<T extends Resource>(searchRequest: SearchRequest<T>): Promise<Bundle<T>> {
@@ -1160,15 +1152,23 @@ export class Repository extends BaseRepository implements FhirRepository {
 
     const details = getSearchParameterDetails(resource.resourceType, searchParam);
     const values = evalFhirPath(searchParam.expression as string, resource);
+    let columnValue = null;
 
     if (values.length > 0) {
       if (details.array) {
-        columns[details.columnName] = values.map((v) => this.buildColumnValue(searchParam, details, v));
+        columnValue = values.map((v) => this.buildColumnValue(searchParam, details, v));
       } else {
-        columns[details.columnName] = this.buildColumnValue(searchParam, details, values[0]);
+        columnValue = this.buildColumnValue(searchParam, details, values[0]);
       }
-    } else {
-      columns[details.columnName] = null;
+    }
+
+    columns[details.columnName] = columnValue;
+
+    // Handle special case for "MeasureReport-period"
+    // This is a trial for using "tstzrange" columns for date/time ranges.
+    // Eventually, this special case will go away, and this will become the default behavior for all "date" search parameters.
+    if (searchParam.id === 'MeasureReport-period') {
+      columns['period_range'] = this.buildPeriodColumn(values[0]);
     }
   }
 
@@ -1254,6 +1254,20 @@ export class Repository extends BaseRepository implements FhirRepository {
       if ('end' in value) {
         return this.buildDateTimeColumn(value.end);
       }
+    }
+    return undefined;
+  }
+
+  /**
+   * Builds the column value for a "date" search parameter.
+   * This is currently in trial mode. The intention is for this to replace all "date" and "date/time" search parameters.
+   * @param value - The FHIRPath result value.
+   * @returns The period column string value.
+   */
+  private buildPeriodColumn(value: any): string | undefined {
+    const period = toPeriod(value);
+    if (period) {
+      return periodToRangeString(period);
     }
     return undefined;
   }
@@ -1757,6 +1771,125 @@ export class Repository extends BaseRepository implements FhirRepository {
       this.updateResourceImpl(auditEvent, true).catch(console.error);
     }
   }
+
+  /**
+   * Returns a database client.
+   * Use this method when you don't care if you're in a transaction or not.
+   * For example, use this method for "read by ID".
+   * The return value can either be a pool client or a pool.
+   * If in a transaction, then returns the transaction client (PoolClient).
+   * Otherwise, returns the pool (Pool).
+   * @returns The database client.
+   */
+  getDatabaseClient(): Pool | PoolClient {
+    this.assertNotClosed();
+    // If in a transaction, then use the transaction client.
+    // Otherwise, use the pool client.
+    return this.conn ?? getDatabasePool();
+  }
+
+  /**
+   * Returns a proper database connection.
+   * Unlike getDatabaseClient(), this method always returns a PoolClient.
+   * @returns Database connection.
+   */
+  private async getConnection(): Promise<PoolClient> {
+    this.assertNotClosed();
+    if (!this.conn) {
+      this.conn = await getDatabasePool().connect();
+    }
+    return this.conn;
+  }
+
+  /**
+   * Releases the database connection.
+   * Include an error to remove the connection from the pool.
+   * See: https://github.com/brianc/node-postgres/blob/master/packages/pg-pool/index.js#L333
+   * @param err - Optional error to remove the connection from the pool.
+   */
+  private releaseConnection(err?: boolean | Error): void {
+    if (this.conn) {
+      this.conn.release(err);
+      this.conn = undefined;
+    }
+  }
+
+  async withTransaction<TResult>(callback: (client: PoolClient) => Promise<TResult>): Promise<TResult> {
+    try {
+      const client = await this.beginTransaction();
+      const result = await callback(client);
+      await this.commitTransaction();
+      return result;
+    } catch (err) {
+      const operationOutcomeError = new OperationOutcomeError(normalizeOperationOutcome(err), err);
+      await this.rollbackTransaction(operationOutcomeError);
+      throw operationOutcomeError;
+    } finally {
+      this.endTransaction();
+    }
+  }
+
+  private async beginTransaction(): Promise<PoolClient> {
+    this.assertNotClosed();
+    this.transactionDepth++;
+    const conn = await this.getConnection();
+    if (this.transactionDepth === 1) {
+      await conn.query('BEGIN');
+    } else {
+      await conn.query('SAVEPOINT sp' + this.transactionDepth);
+    }
+    return conn;
+  }
+
+  private async commitTransaction(): Promise<void> {
+    this.assertInTransaction();
+    const conn = await this.getConnection();
+    if (this.transactionDepth === 1) {
+      await conn.query('COMMIT');
+    } else {
+      await conn.query('RELEASE SAVEPOINT sp' + this.transactionDepth);
+    }
+  }
+
+  private async rollbackTransaction(error: Error): Promise<void> {
+    this.assertInTransaction();
+    const conn = await this.getConnection();
+    if (this.transactionDepth === 1) {
+      await conn.query('ROLLBACK');
+      this.releaseConnection(error);
+    } else {
+      await conn.query('ROLLBACK TO SAVEPOINT sp' + this.transactionDepth);
+    }
+  }
+
+  private endTransaction(): void {
+    this.assertInTransaction();
+    this.transactionDepth--;
+    if (this.transactionDepth === 0) {
+      this.releaseConnection();
+    }
+  }
+
+  private assertInTransaction(): void {
+    if (this.transactionDepth <= 0) {
+      throw new Error('Not in transaction');
+    }
+  }
+
+  close(): void {
+    if (this.transactionDepth > 0) {
+      throw new Error('Closing with active transaction');
+    }
+    this.assertNotClosed();
+    this.releaseConnection();
+    this.closed = true;
+  }
+
+  private assertNotClosed(): void {
+    if (this.closed) {
+      throw new Error('Already closed');
+    }
+  }
 }
 
 export function isIndexTable(resourceType: string, searchParam: SearchParameter): boolean {
@@ -1771,6 +1904,8 @@ export function getLookupTable(resourceType: string, searchParam: SearchParamete
   }
   return undefined;
 }
+
+const REDIS_CACHE_EX_SECONDS = 24 * 60 * 60; // 24 hours in seconds
 
 /**
  * Tries to read a cache entry from Redis by resource type and ID.
@@ -1804,12 +1939,16 @@ async function getCacheEntries(references: Reference[]): Promise<(CacheEntry | u
  * @param resource - The resource to cache.
  */
 async function setCacheEntry(resource: Resource): Promise<void> {
+  const projectId = resource.meta?.project;
   await getRedis().set(
     getCacheKey(resource.resourceType, resource.id as string),
-    JSON.stringify({ resource, projectId: resource.meta?.project }),
+    JSON.stringify({ resource, projectId }),
     'EX',
-    24 * 60 * 60 // 24 hours in seconds
+    REDIS_CACHE_EX_SECONDS
   );
+  if (projectId && resource.resourceType === 'StructureDefinition') {
+    await setProfileCacheEntry(projectId, resource);
+  }
 }
 
 /**
@@ -1842,6 +1981,47 @@ async function deleteCacheEntries(resourceType: string, ids: string[]): Promise<
  */
 function getCacheKey(resourceType: string, id: string): string {
   return `${resourceType}/${id}`;
+}
+
+/**
+ * Tries to read a FHIR profile cache entry from Redis by project and profile URL.
+ * @param projectId - The project ID.
+ * @param url - The profile URL.
+ * @returns The cache entry if found; otherwise, undefined.
+ */
+async function getProfileCacheEntry(
+  projectId: string,
+  url: string
+): Promise<CacheEntry<StructureDefinition> | undefined> {
+  const cachedValue = await getRedis().get(getProfileCacheKey(projectId, url));
+  return cachedValue ? (JSON.parse(cachedValue) as CacheEntry<StructureDefinition>) : undefined;
+}
+
+/**
+ * Writes a FHIR profile cache entry to Redis.
+ * @param projectId - The project ID.
+ * @param structureDefinition - The profile structure definition.
+ */
+async function setProfileCacheEntry(projectId: string, structureDefinition: StructureDefinition): Promise<void> {
+  if (!structureDefinition.url) {
+    return;
+  }
+  await getRedis().set(
+    getProfileCacheKey(projectId, structureDefinition.url),
+    JSON.stringify({ resource: structureDefinition, projectId }),
+    'EX',
+    REDIS_CACHE_EX_SECONDS
+  );
+}
+
+/**
+ * Returns the redis cache key for the given project and FHIR profile URL.
+ * @param projectId - The project ID.
+ * @param url - The profile URL.
+ * @returns The Redis cache key.
+ */
+function getProfileCacheKey(projectId: string, url: string): string {
+  return `Project/${projectId}/StructureDefinition/${url}`;
 }
 
 export const systemRepo = new Repository({

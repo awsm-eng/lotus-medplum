@@ -296,6 +296,34 @@ describe('OAuth2 Token', () => {
     expect(login.superAdmin).toBe(true);
   });
 
+  test('Token for client in "off" status', async () => {
+    const { client } = await createTestProject();
+    await withTestContext(() => systemRepo.updateResource<ClientApplication>({ ...client, status: 'off' }));
+
+    const res = await request(app).post('/oauth2/token').type('form').send({
+      grant_type: 'client_credentials',
+      client_id: client.id,
+      client_secret: client.secret,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid_request');
+    expect(res.body.error_description).toBe('Invalid client');
+  });
+
+  test('Token for client in "active" status', async () => {
+    const { client } = await createTestProject();
+    await withTestContext(() => systemRepo.updateResource<ClientApplication>({ ...client, status: 'active' }));
+
+    const res = await request(app).post('/oauth2/token').type('form').send({
+      grant_type: 'client_credentials',
+      client_id: client.id,
+      client_secret: client.secret,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.error).toBeUndefined();
+    expect(res.body.access_token).toBeDefined();
+  });
+
   test('Token for authorization_code with missing code', async () => {
     const res = await request(app).post('/oauth2/token').type('form').send({
       grant_type: 'authorization_code',
@@ -1354,7 +1382,7 @@ describe('OAuth2 Token', () => {
       client_assertion: jwt,
     });
     expect(res.status).toBe(200);
-    expect(jwtVerify).toBeCalledTimes(3);
+    expect(jwtVerify).toHaveBeenCalledTimes(3);
   });
 
   test('Client assertion multiple inner error', async () => {
@@ -1385,7 +1413,7 @@ describe('OAuth2 Token', () => {
       client_assertion: jwt,
     });
     expect(res.status).toBe(400);
-    expect(jwtVerify).toBeCalledTimes(2);
+    expect(jwtVerify).toHaveBeenCalledTimes(2);
   });
 
   test('Client assertion invalid assertion type', async () => {

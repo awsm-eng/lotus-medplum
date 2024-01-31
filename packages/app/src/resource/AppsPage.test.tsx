@@ -3,10 +3,10 @@ import { Notifications } from '@mantine/notifications';
 import { forbidden, OperationOutcomeError } from '@medplum/core';
 import { MockClient } from '@medplum/mock';
 import { ErrorBoundary, Loading, MedplumProvider } from '@medplum/react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Suspense } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { AppRoutes } from '../AppRoutes';
+import { act, fireEvent, render, screen, waitFor } from '../test-utils/render';
 
 describe('AppsPage', () => {
   async function setup(url: string, medplum = new MockClient()): Promise<void> {
@@ -62,7 +62,7 @@ describe('AppsPage', () => {
       fireEvent.click(screen.getByText('Inferno Client'));
     });
 
-    expect(window.location.assign).toBeCalled();
+    expect(window.location.assign).toHaveBeenCalled();
   });
 
   test('Encounter Smart App Launch', async () => {
@@ -84,7 +84,7 @@ describe('AppsPage', () => {
       fireEvent.click(screen.getByText('Inferno Client'));
     });
 
-    expect(window.location.assign).toBeCalled();
+    expect(window.location.assign).toHaveBeenCalled();
   });
 
   test('Access denied to ClientApplications', async () => {

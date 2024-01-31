@@ -3,13 +3,13 @@ import { ReactNode, useContext } from 'react';
 import { BackboneElementContext } from '../BackboneElementInput/BackboneElementInput.utils';
 
 export interface CheckboxFormSectionProps {
-  htmlFor?: string;
-  title?: string;
-  description?: string;
-  withAsterisk?: boolean;
-  children?: ReactNode;
-  testId?: string;
-  fhirPath?: string;
+  readonly htmlFor?: string;
+  readonly title?: string;
+  readonly description?: string;
+  readonly withAsterisk?: boolean;
+  readonly children?: ReactNode;
+  readonly testId?: string;
+  readonly fhirPath?: string;
 }
 
 export function CheckboxFormSection(props: CheckboxFormSectionProps): JSX.Element {
@@ -22,7 +22,7 @@ export function CheckboxFormSection(props: CheckboxFormSectionProps): JSX.Elemen
     label = props.title;
   }
   return (
-    <Group noWrap data-testid={props.testId}>
+    <Group wrap="nowrap" data-testid={props.testId}>
       <div>{props.children}</div>
       <div>
         <Input.Wrapper

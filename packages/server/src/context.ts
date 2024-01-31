@@ -1,10 +1,9 @@
-import { ProfileResource, isUUID } from '@medplum/core';
+import { LogLevel, Logger, ProfileResource, isUUID } from '@medplum/core';
 import { Login, Project, ProjectMembership, Reference } from '@medplum/fhirtypes';
 import { AsyncLocalStorage } from 'async_hooks';
 import { randomUUID } from 'crypto';
 import { NextFunction, Request, Response } from 'express';
 import { Repository, systemRepo } from './fhir/repo';
-import { LogLevel, Logger } from './logger';
 
 export class RequestContext {
   readonly requestId: string;
@@ -14,7 +13,13 @@ export class RequestContext {
   constructor(requestId: string, traceId: string, logger?: Logger) {
     this.requestId = requestId;
     this.traceId = traceId;
-    this.logger = logger ?? new Logger(process.stdout, { requestId, traceId });
+    this.logger =
+      logger ??
+      new Logger(write, { requestId, traceId }, process.env.NODE_ENV === 'test' ? LogLevel.ERROR : LogLevel.INFO);
+  }
+
+  close(): void {
+    // No-op, descendants may override
   }
 
   static empty(): RequestContext {
@@ -49,8 +54,12 @@ export class AuthenticatedRequestContext extends RequestContext {
     this.accessToken = accessToken;
   }
 
+  close(): void {
+    this.repo.close();
+  }
+
   static system(): AuthenticatedRequestContext {
-    const systemLogger = new Logger(process.stdout, undefined, LogLevel.ERROR);
+    const systemLogger = new Logger(write, undefined, LogLevel.ERROR);
     return new AuthenticatedRequestContext(
       new RequestContext('', ''),
       {} as unknown as Login,
@@ -63,6 +72,7 @@ export class AuthenticatedRequestContext extends RequestContext {
 }
 
 export const requestContextStore = new AsyncLocalStorage<RequestContext>();
+
 export function getRequestContext(): RequestContext {
   const ctx = requestContextStore.getStore();
   if (!ctx) {
@@ -82,6 +92,13 @@ export function getAuthenticatedContext(): AuthenticatedRequestContext {
 export async function attachRequestContext(req: Request, res: Response, next: NextFunction): Promise<void> {
   const { requestId, traceId } = requestIds(req);
   requestContextStore.run(new RequestContext(requestId, traceId), () => next());
+}
+
+export function closeRequestContext(): void {
+  const ctx = requestContextStore.getStore();
+  if (ctx) {
+    ctx.close();
+  }
 }
 
 function requestIds(req: Request): { requestId: string; traceId: string } {
@@ -108,4 +125,8 @@ function requestIds(req: Request): { requestId: string; traceId: string } {
     traceId = randomUUID();
   }
   return { requestId, traceId };
+}
+
+function write(msg: string): void {
+  process.stdout.write(msg + '\n');
 }

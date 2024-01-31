@@ -1,6 +1,6 @@
 import { Title } from '@mantine/core';
 import { allOk, badRequest, GoogleCredentialResponse, MedplumClient } from '@medplum/core';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '../test-utils/render';
 import crypto from 'crypto';
 import { MemoryRouter } from 'react-router-dom';
 import { TextEncoder } from 'util';
@@ -534,7 +534,7 @@ describe('SignInForm', () => {
       fireEvent.click(screen.getByText('Forgot password'));
     });
 
-    expect(props.onForgotPassword).toBeCalled();
+    expect(props.onForgotPassword).toHaveBeenCalled();
   });
 
   test('Register', async () => {
@@ -549,7 +549,7 @@ describe('SignInForm', () => {
       fireEvent.click(screen.getByText('Register'));
     });
 
-    expect(props.onRegister).toBeCalled();
+    expect(props.onRegister).toHaveBeenCalled();
   });
 
   test('Disable Email', async () => {
@@ -680,7 +680,7 @@ describe('SignInForm', () => {
       fireEvent.click(screen.getByText('Next'));
     });
 
-    await waitFor(() => expect(window.location.assign).toBeCalled());
-    expect(window.location.assign).toBeCalled();
+    await waitFor(() => expect(window.location.assign).toHaveBeenCalled());
+    expect(window.location.assign).toHaveBeenCalled();
   });
 });

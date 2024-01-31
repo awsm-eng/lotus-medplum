@@ -1,9 +1,9 @@
 import { createReference } from '@medplum/core';
-import { Patient, Specimen } from '@medplum/fhirtypes';
+import { Observation, Patient, Specimen } from '@medplum/fhirtypes';
 import { HomerObservation1, MockClient } from '@medplum/mock';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { convertIsoToLocal, convertLocalToIso } from '../DateTimeInput/DateTimeInput.utils';
 import { MedplumProvider } from '@medplum/react-hooks';
+import { convertIsoToLocal, convertLocalToIso } from '../DateTimeInput/DateTimeInput.utils';
+import { act, fireEvent, render, screen, waitFor } from '../test-utils/render';
 import { ResourceForm, ResourceFormProps } from './ResourceForm';
 
 const medplum = new MockClient();
@@ -76,7 +76,7 @@ describe('ResourceForm', () => {
       fireEvent.click(screen.getByText('OK'));
     });
 
-    expect(onSubmit).toBeCalled();
+    expect(onSubmit).toHaveBeenCalled();
   });
 
   test('Renders empty Observation form', async () => {
@@ -85,7 +85,7 @@ describe('ResourceForm', () => {
     await setup({
       defaultValue: {
         resourceType: 'Observation',
-      },
+      } as Observation,
       onSubmit,
     });
 
@@ -121,7 +121,7 @@ describe('ResourceForm', () => {
           value: 1,
           unit: 'kg',
         },
-      },
+      } as Observation,
       onSubmit,
     });
 
@@ -144,7 +144,7 @@ describe('ResourceForm', () => {
       fireEvent.click(screen.getByText('OK'));
     });
 
-    expect(onSubmit).toBeCalled();
+    expect(onSubmit).toHaveBeenCalled();
 
     const result = onSubmit.mock.calls[0][0];
     expect(result.resourceType).toBe('Observation');
@@ -171,8 +171,8 @@ describe('ResourceForm', () => {
       fireEvent.click(screen.getByText('Delete'));
     });
 
-    expect(onSubmit).not.toBeCalled();
-    expect(onDelete).toBeCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onDelete).toHaveBeenCalled();
   });
 
   test('Change Specimen.collection.collectedDateTime', async () => {
@@ -194,7 +194,7 @@ describe('ResourceForm', () => {
       fireEvent.click(screen.getByText('OK'));
     });
 
-    expect(onSubmit).toBeCalled();
+    expect(onSubmit).toHaveBeenCalled();
 
     const result = onSubmit.mock.calls[0][0] as Specimen;
     expect(result.resourceType).toBe('Specimen');
@@ -217,7 +217,7 @@ describe('ResourceForm', () => {
       fireEvent.click(screen.getByText('OK'));
     });
 
-    expect(onSubmit).toBeCalled();
+    expect(onSubmit).toHaveBeenCalled();
 
     const patient = onSubmit.mock.calls[0][0] as Patient;
     expect(patient.resourceType).toBe('Patient');

@@ -21,6 +21,7 @@ import {
   Organization,
   Project,
   ProjectMembership,
+  ProjectSecret,
   Reference,
   Subscription,
 } from '@medplum/fhirtypes';
@@ -33,9 +34,9 @@ import { TextDecoder, TextEncoder } from 'util';
 import { asyncWrap } from '../../async';
 import { getConfig } from '../../config';
 import { getAuthenticatedContext, getRequestContext } from '../../context';
-import { globalLogger } from '../../logger';
 import { generateAccessToken } from '../../oauth/keys';
-import { AuditEventOutcome } from '../../util/auditevent';
+import { recordHistogramValue } from '../../otel/otel';
+import { AuditEventOutcome, logAuditEvent } from '../../util/auditevent';
 import { MockConsole } from '../../util/console';
 import { createAuditEventEntities } from '../../workers/utils';
 import { sendOutcome } from '../outcomes';
@@ -152,6 +153,7 @@ export async function executeBot(request: BotExecutionRequest): Promise<BotExecu
 
   let result: BotExecutionResult;
 
+  const execStart = process.hrtime.bigint();
   if (!(await isBotEnabled(bot))) {
     result = { success: false, logResult: 'Bots not enabled' };
   } else {
@@ -165,6 +167,10 @@ export async function executeBot(request: BotExecutionRequest): Promise<BotExecu
       result = { success: false, logResult: 'Unsupported bot runtime' };
     }
   }
+  const executionTime = Number(process.hrtime.bigint() - execStart) / 1e9; // Report duration in seconds
+
+  const attributes = { project: bot.meta?.project, bot: bot.id, outcome: result.success ? 'success' : 'failure' };
+  recordHistogramValue('medplum.bot.execute.time', executionTime, attributes);
 
   await createAuditEvent(
     request,
@@ -410,6 +416,7 @@ async function runInVmContext(request: BotExecutionRequest): Promise<BotExecutio
   // Wrap code in an async block for top-level await support
   const wrappedCode = `
   const exports = {};
+  const module = {exports};
 
   // Start user code
   ${code}
@@ -485,7 +492,7 @@ async function getBotAccessToken(runAs: ProjectMembership): Promise<string> {
   return accessToken;
 }
 
-async function getBotSecrets(bot: Bot): Promise<Record<string, string>> {
+async function getBotSecrets(bot: Bot): Promise<Record<string, ProjectSecret>> {
   const project = await systemRepo.readResource<Project>('Project', bot.meta?.project as string);
   const secrets = Object.fromEntries(project.secret?.map((secret) => [secret.name, secret]) || []);
   return secrets;
@@ -564,7 +571,7 @@ async function createAuditEvent(
     await systemRepo.createResource<AuditEvent>(auditEvent);
   }
   if (destination.includes('log')) {
-    globalLogger.logAuditEvent(auditEvent);
+    logAuditEvent(auditEvent);
   }
 }
 

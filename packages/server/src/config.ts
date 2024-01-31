@@ -25,6 +25,7 @@ export interface MedplumServerConfig {
   signingKeyPassphrase: string;
   supportEmail: string;
   database: MedplumDatabaseConfig;
+  databaseProxyEndpoint?: string;
   redis: MedplumRedisConfig;
   smtp?: MedplumSmtpConfig;
   bullmq?: MedplumBullmqConfig;
@@ -41,16 +42,20 @@ export interface MedplumServerConfig {
   logRequests?: boolean;
   logAuditEvents?: boolean;
   saveAuditEvents?: boolean;
-  auditEventLogGroup?: string;
-  auditEventLogStream?: string;
   registerEnabled?: boolean;
   bcryptHashSalt: number;
   introspectionEnabled?: boolean;
   keepAliveTimeout?: number;
   vmContextBotsEnabled?: boolean;
   shutdownTimeoutMilliseconds?: number;
-  otlpTraceEndpoint?: string;
-  otlpMetricsEndpoint?: string;
+  heartbeatMilliseconds?: number;
+  heartbeatEnabled?: boolean;
+
+  /** @deprecated */
+  auditEventLogGroup?: string;
+
+  /** @deprecated */
+  auditEventLogStream?: string;
 }
 
 /**
@@ -81,6 +86,7 @@ export interface MedplumRedisConfig {
   host?: string;
   port?: number;
   password?: string;
+  tls?: Record<string, unknown>;
 }
 
 export interface MedplumSmtpConfig {
@@ -186,6 +192,8 @@ function loadEnvConfig(): MedplumServerConfig {
       currConfig.port = parseInt(value ?? '', 10);
     } else if (isBooleanConfig(key)) {
       currConfig[key] = value === 'true';
+    } else if (isObjectConfig(key)) {
+      currConfig[key] = JSON.parse(value ?? '');
     } else {
       currConfig[key] = value;
     }
@@ -302,4 +310,8 @@ function isBooleanConfig(key: string): boolean {
     key === 'require' ||
     key === 'rejectUnauthorized'
   );
+}
+
+function isObjectConfig(key: string): boolean {
+  return key === 'tls';
 }

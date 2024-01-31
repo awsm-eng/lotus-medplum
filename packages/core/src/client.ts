@@ -83,10 +83,15 @@ export const DEFAULT_ACCEPT = ContentType.FHIR_JSON + ', */*; q=0.1';
 
 const DEFAULT_BASE_URL = 'https://api.medplum.com/';
 const DEFAULT_RESOURCE_CACHE_SIZE = 1000;
-const DEFAULT_CACHE_TIME = 60000; // 60 seconds
+const DEFAULT_BROWSER_CACHE_TIME = 60000; // 60 seconds
+const DEFAULT_NODE_CACHE_TIME = 0;
 const BINARY_URL_PREFIX = 'Binary/';
 
-const system: Device = { resourceType: 'Device', id: 'system', deviceName: [{ name: 'System' }] };
+const system: Device = {
+  resourceType: 'Device',
+  id: 'system',
+  deviceName: [{ type: 'model-name', name: 'System' }],
+};
 
 /**
  * The MedplumClientOptions interface defines configuration options for MedplumClient.
@@ -599,6 +604,8 @@ export interface ValueSetExpandParams {
  *   6. Searching
  *   7. Making GraphQL queries
  *
+ * The client can also be used to integrate with other FHIR servers. For an example, see the Epic Connection Demo Bot [here](https://github.com/medplum/medplum/tree/main/examples/medplum-demo-bots/src/epic).
+ *
  * @example
  * Here is a quick example of how to use the client:
  *
@@ -691,7 +698,8 @@ export class MedplumClient extends EventTarget {
     this.clientSecret = options?.clientSecret ?? '';
     this.onUnauthenticated = options?.onUnauthenticated;
 
-    this.cacheTime = options?.cacheTime ?? DEFAULT_CACHE_TIME;
+    this.cacheTime =
+      options?.cacheTime ?? (typeof window === 'undefined' ? DEFAULT_NODE_CACHE_TIME : DEFAULT_BROWSER_CACHE_TIME);
     if (this.cacheTime > 0) {
       this.requestCache = new LRUCache(options?.resourceCacheSize ?? DEFAULT_RESOURCE_CACHE_SIZE);
     } else {
@@ -816,6 +824,7 @@ export class MedplumClient extends EventTarget {
     this.requestCache?.clear();
     this.accessToken = undefined;
     this.refreshToken = undefined;
+    this.refreshPromise = undefined;
     this.accessTokenExpires = undefined;
     this.sessionDetails = undefined;
     this.medplumServer = undefined;
@@ -2044,6 +2053,7 @@ export class MedplumClient extends EventTarget {
     return this.createResource<Communication>(
       {
         resourceType: 'Communication',
+        status: 'completed',
         basedOn: [createReference(resource)],
         encounter,
         subject,
@@ -2989,9 +2999,9 @@ export class MedplumClient extends EventTarget {
   private setRequestBody(options: RequestInit, data: any): void {
     if (
       typeof data === 'string' ||
-      (typeof Blob !== 'undefined' && data instanceof Blob) ||
-      (typeof File !== 'undefined' && data instanceof File) ||
-      (typeof Uint8Array !== 'undefined' && data instanceof Uint8Array)
+      (typeof Blob !== 'undefined' && (data instanceof Blob || data.constructor.name === 'Blob')) ||
+      (typeof File !== 'undefined' && (data instanceof File || data.constructor.name === 'File')) ||
+      (typeof Uint8Array !== 'undefined' && (data instanceof Uint8Array || data.constructor.name === 'Uint8Array'))
     ) {
       options.body = data;
     } else if (data) {
@@ -3386,7 +3396,14 @@ export class MedplumClient extends EventTarget {
       headers['Authorization'] = `Basic ${this.basicAuth}`;
     }
 
-    const response = await this.fetchWithRetry(this.tokenUrl, options);
+    let response: Response;
+    try {
+      response = await this.fetchWithRetry(this.tokenUrl, options);
+    } catch (err) {
+      this.refreshPromise = undefined;
+      throw err;
+    }
+
     if (!response.ok) {
       this.clearActiveLogin();
       try {

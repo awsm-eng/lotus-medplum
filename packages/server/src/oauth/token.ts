@@ -25,7 +25,7 @@ import { getTopicForUser } from '../fhircast/utils';
 import { MedplumRefreshTokenClaims, generateSecret, verifyJwt } from './keys';
 import {
   getAuthTokens,
-  getClient,
+  getClientApplication,
   getClientApplicationMembership,
   getExternalUserInfo,
   revokeLogin,
@@ -104,6 +104,11 @@ async function handleClientCredentials(req: Request, res: Response): Promise<voi
   try {
     client = await systemRepo.readResource<ClientApplication>('ClientApplication', clientId);
   } catch (err) {
+    sendTokenError(res, 'invalid_request', 'Invalid client');
+    return;
+  }
+
+  if (client.status && client.status !== 'active') {
     sendTokenError(res, 'invalid_request', 'Invalid client');
     return;
   }
@@ -197,7 +202,7 @@ async function handleAuthorizationCode(req: Request, res: Response): Promise<voi
   let client: ClientApplication | undefined;
   if (clientId) {
     try {
-      client = await getClient(clientId);
+      client = await getClientApplication(clientId);
     } catch (err) {
       sendTokenError(res, 'invalid_request', 'Invalid client');
       return;

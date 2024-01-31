@@ -4,8 +4,8 @@ import { Redis } from 'ioredis';
 import { JWTPayload } from 'jose';
 import crypto from 'node:crypto';
 import ws from 'ws';
-import { AdditionalWsBindingClaims } from '../fhir/operations/getwsbindingtoken';
-import { getFullUrl } from '../fhir/search';
+import { getFullUrl } from '../fhir/response';
+import { heartbeat } from '../heartbeat';
 import { globalLogger } from '../logger';
 import { verifyJwt } from '../oauth/keys';
 import { getRedis } from '../redis';
@@ -22,9 +22,11 @@ export interface BindWithTokenMsg extends BaseSubscriptionClientMsg {
 
 export async function handleR4SubscriptionConnection(socket: ws.WebSocket): Promise<void> {
   const redis = getRedis();
+  const subscriptionIds = [] as string[];
   let redisSubscriber: Redis;
-
   let onDisconnect: (() => void) | undefined;
+  let heartbeatHandler: (() => void) | undefined;
+
   const onBind = async (tokenPayload: JWTPayload): Promise<void> => {
     if (!redisSubscriber) {
       // Create a redis client for this connection.
@@ -41,13 +43,24 @@ export async function handleR4SubscriptionConnection(socket: ws.WebSocket): Prom
       onDisconnect = () => redisSubscriber.disconnect();
     }
 
-    if (!tokenPayload.subscription_id) {
+    const subscriptionId = tokenPayload?.subscription_id as string | undefined;
+    if (!subscriptionId) {
       socket.send(
         JSON.stringify(badRequest('Token claims missing subscription_id. Make sure you are sending the correct token.'))
       );
+      return;
     }
+    if (!subscriptionIds.includes(subscriptionId)) {
+      subscriptionIds.push(subscriptionId);
+    }
+    await redisSubscriber.subscribe(subscriptionId);
 
-    await redisSubscriber.subscribe((tokenPayload as AdditionalWsBindingClaims)?.subscription_id);
+    if (!heartbeatHandler) {
+      heartbeatHandler = (): void => {
+        socket.send(JSON.stringify(createSubHeartbeatEvent(subscriptionIds)));
+      };
+      heartbeat.addEventListener('heartbeat', heartbeatHandler);
+    }
   };
 
   socket.on('message', async (data: ws.RawData) => {
@@ -81,11 +94,33 @@ export async function handleR4SubscriptionConnection(socket: ws.WebSocket): Prom
     if (onDisconnect) {
       onDisconnect();
     }
+    if (heartbeatHandler) {
+      heartbeat.removeEventListener('heartbeat', heartbeatHandler);
+    }
   });
 }
 
 export type SubStatus = 'requested' | 'active' | 'error' | 'off';
 export type SubEventsOptions = { status?: SubStatus; includeResource?: boolean };
+
+export function createSubHeartbeatEvent(subscriptionIds: string[]): Bundle {
+  const timestamp = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    resourceType: 'Bundle',
+    type: 'history',
+    timestamp,
+    entry: subscriptionIds.map((subscriptionId) => ({
+      resource: {
+        resourceType: 'SubscriptionStatus',
+        id: crypto.randomUUID(),
+        status: 'active',
+        type: 'heartbeat',
+        subscription: { reference: `Subscription/${subscriptionId}` },
+      },
+    })),
+  };
+}
 
 export function createSubEventNotification<ResourceType extends Resource = Resource>(
   resource: ResourceType,
@@ -110,7 +145,7 @@ export function createSubEventNotification<ResourceType extends Resource = Resou
           resourceType: 'SubscriptionStatus',
           status,
           type: 'event-notification',
-          subscription: createReference({ resourceType: 'Subscription', id: subscriptionId }),
+          subscription: { reference: `Subscription/${subscriptionId}` },
           notificationEvent: [{ eventNumber: '0', timestamp, focus: createReference(resource) }],
         },
       },

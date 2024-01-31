@@ -16,7 +16,7 @@ import { IconArrowNarrowRight } from '@tabler/icons-react';
 import { useState } from 'react';
 
 interface BundleDisplayProps {
-  bundle: Bundle;
+  readonly bundle: Bundle;
 }
 
 function BundleDisplay(props: BundleDisplayProps): JSX.Element {
@@ -254,7 +254,7 @@ export function HomePage(): JSX.Element {
       <Title>
         Welcome <ResourceName value={profile} link />
       </Title>
-      <Group position="center" pt="xl">
+      <Group justify="center" pt="xl">
         <Button
           onClick={!subscriptions ? () => createSubscriptions().catch(console.error) : undefined}
           disabled={working || !!subscriptions}
@@ -287,7 +287,7 @@ export function HomePage(): JSX.Element {
           Create Message for Another Patient
         </Button>
       </Group>
-      <Group position="center" pt="xl">
+      <Group justify="center" pt="xl">
         <Button onClick={webSocket ? closeWebSocket : undefined} disabled={!webSocket} variant="outline">
           Disconnect from WebSocket
         </Button>

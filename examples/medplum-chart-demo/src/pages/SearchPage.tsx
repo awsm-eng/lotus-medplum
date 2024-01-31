@@ -1,4 +1,4 @@
-import { createStyles, Paper } from '@mantine/core';
+import { Paper } from '@mantine/core';
 import {
   DEFAULT_SEARCH_COUNT,
   Filter,
@@ -11,20 +11,9 @@ import { UserConfiguration } from '@medplum/fhirtypes';
 import { Loading, MemoizedSearchControl, useMedplum } from '@medplum/react';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-
-const useStyles = createStyles((theme) => {
-  return {
-    paper: {
-      [`@media (max-width: ${theme.breakpoints.sm})`]: {
-        margin: 2,
-        padding: 4,
-      },
-    },
-  };
-});
+import classes from './SearchPage.module.css';
 
 export function SearchPage(): JSX.Element {
-  const { classes } = useStyles();
   const medplum = useMedplum();
   const navigate = useNavigate();
   const location = useLocation();
@@ -55,7 +44,6 @@ export function SearchPage(): JSX.Element {
       <MemoizedSearchControl
         checkboxesEnabled={true}
         search={search}
-        userConfig={medplum.getUserConfiguration()}
         onClick={(e) => navigate(`/${e.resource.resourceType}/${e.resource.id}`)}
         onAuxClick={(e) => window.open(`/${e.resource.resourceType}/${e.resource.id}`, '_blank')}
         onChange={(e) => {

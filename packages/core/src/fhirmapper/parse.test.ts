@@ -28,6 +28,7 @@ describe('FHIR Mapping Language parser', () => {
       resourceType: 'StructureMap',
       url: 'http://hl7.org/fhir/StructureMap/tutorial',
       name: 'tutorial',
+      status: 'active',
       structure: [
         {
           url: 'http://hl7.org/fhir/StructureDefinition/tutorial-left',
@@ -1636,7 +1637,7 @@ describe('FHIR Mapping Language parser', () => {
     foo
     `;
 
-    expect(() => parseMappingLanguage(input)).toThrowError('Unexpected token: foo');
+    expect(() => parseMappingLanguage(input)).toThrow('Unexpected token: foo');
   });
 
   test('Multiple imports', () => {

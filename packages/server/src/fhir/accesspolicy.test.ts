@@ -696,6 +696,9 @@ describe('AccessPolicy', () => {
       const clientRepo = await getRepoForLogin(
         {
           resourceType: 'Login',
+          user: createReference(clientApplication),
+          authMethod: 'client',
+          authTime: new Date().toISOString(),
         },
         {
           resourceType: 'ProjectMembership',
@@ -704,6 +707,7 @@ describe('AccessPolicy', () => {
           },
           profile: createReference(clientApplication as ClientApplication),
           accessPolicy: createReference(accessPolicy),
+          user: createReference(clientApplication),
         }
       );
 
@@ -798,6 +802,9 @@ describe('AccessPolicy', () => {
       const clientRepo = await getRepoForLogin(
         {
           resourceType: 'Login',
+          user: createReference(clientApplication),
+          authMethod: 'client',
+          authTime: new Date().toISOString(),
         },
         {
           resourceType: 'ProjectMembership',
@@ -806,6 +813,7 @@ describe('AccessPolicy', () => {
           },
           profile: createReference(clientApplication as ClientApplication),
           accessPolicy: createReference(accessPolicy),
+          user: createReference(clientApplication),
         }
       );
 
@@ -1745,7 +1753,7 @@ describe('AccessPolicy', () => {
   test('Mutex resource type policies with hidden fields', () =>
     withTestContext(async () => {
       const project = await systemRepo.createResource<Project>({ resourceType: 'Project', name: 'Test1' });
-      const org = await systemRepo.createResource<Organization>({ resourceType: 'Organization' });
+      const org = await systemRepo.createResource<Organization>({ resourceType: 'Organization', name: 'Test2' });
       const orgRef = createReference(org);
       const accessPolicy = await systemRepo.createResource<AccessPolicy>({
         resourceType: 'AccessPolicy',

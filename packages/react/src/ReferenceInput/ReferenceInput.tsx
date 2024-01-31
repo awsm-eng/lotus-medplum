@@ -15,31 +15,31 @@ import { ResourceInput } from '../ResourceInput/ResourceInput';
 import { ResourceTypeInput } from '../ResourceTypeInput/ResourceTypeInput';
 
 export interface ReferenceInputProps {
-  name: string;
-  placeholder?: string;
-  defaultValue?: Reference;
-  targetTypes?: string[];
-  searchCriteria?: Record<string, string>;
-  autoFocus?: boolean;
-  required?: boolean;
-  onChange?: (value: Reference | undefined) => void;
+  readonly name: string;
+  readonly placeholder?: string;
+  readonly defaultValue?: Reference;
+  readonly targetTypes?: string[];
+  readonly searchCriteria?: Record<string, string>;
+  readonly autoFocus?: boolean;
+  readonly required?: boolean;
+  readonly onChange?: (value: Reference | undefined) => void;
 }
 
 interface BaseTargetType {
-  value: string;
+  readonly value: string;
 }
 
 type ProfileTargetType = BaseTargetType & {
-  type: 'profile';
-  name?: string;
-  title?: string;
-  resourceType?: string;
-  error?: any;
+  readonly type: 'profile';
+  readonly name?: string;
+  readonly title?: string;
+  readonly resourceType?: string;
+  readonly error?: any;
 };
 
 type ResourceTypeTargetType = BaseTargetType & {
-  type: 'resourceType';
-  resourceType: string;
+  readonly type: 'resourceType';
+  readonly resourceType: string;
 };
 type TargetType = ResourceTypeTargetType | ProfileTargetType;
 
@@ -86,7 +86,7 @@ export function ReferenceInput(props: ReferenceInputProps): JSX.Element {
             console.error(`StructureDefinition.type missing for ${tt.value}`);
             newTargetType.error = 'StructureDefinition.type missing';
           } else {
-            newTargetType.resourceType = profile.type satisfies string;
+            newTargetType.resourceType = profile.type;
             newTargetType.name = profile.name;
             newTargetType.title = profile.title;
           }
@@ -152,7 +152,7 @@ export function ReferenceInput(props: ReferenceInputProps): JSX.Element {
   }, [targetTypes]);
 
   return (
-    <Group spacing="xs" grow noWrap>
+    <Group gap="xs" grow wrap="nowrap">
       {targetTypes && targetTypes.length > 1 && (
         <NativeSelect
           data-autofocus={props.autoFocus}
@@ -246,18 +246,16 @@ function getInitialTargetType(
   return undefined;
 }
 
-type PartialStructureDefinition = Pick<StructureDefinition, 'type' | 'name' | 'title'>;
-
 interface ResourceTypeGraphQLResponse {
   readonly data: {
-    readonly StructureDefinitionList: PartialStructureDefinition[];
+    readonly StructureDefinitionList: Partial<StructureDefinition>[];
   };
 }
 
 async function fetchResourceTypeOfProfile(
   medplum: MedplumClient,
   profileUrl: string
-): Promise<PartialStructureDefinition | undefined> {
+): Promise<Partial<StructureDefinition> | undefined> {
   const profile = tryGetProfile(profileUrl);
   if (profile) {
     return { type: profile.type, name: profile.name, title: profile.title };
