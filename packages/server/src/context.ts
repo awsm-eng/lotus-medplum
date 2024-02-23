@@ -3,7 +3,8 @@ import { Login, Project, ProjectMembership, Reference } from '@medplum/fhirtypes
 import { AsyncLocalStorage } from 'async_hooks';
 import { randomUUID } from 'crypto';
 import { NextFunction, Request, Response } from 'express';
-import { Repository, systemRepo } from './fhir/repo';
+import { Repository, getSystemRepo } from './fhir/repo';
+import { parseTraceparent } from './traceparent';
 
 export class RequestContext {
   readonly requestId: string;
@@ -26,6 +27,8 @@ export class RequestContext {
     return new RequestContext('', '');
   }
 }
+
+const systemLogger = new Logger(write, undefined, LogLevel.ERROR);
 
 export class AuthenticatedRequestContext extends RequestContext {
   readonly repo: Repository;
@@ -58,20 +61,23 @@ export class AuthenticatedRequestContext extends RequestContext {
     this.repo.close();
   }
 
-  static system(): AuthenticatedRequestContext {
-    const systemLogger = new Logger(write, undefined, LogLevel.ERROR);
+  static system(ctx?: { requestId?: string; traceId?: string }): AuthenticatedRequestContext {
     return new AuthenticatedRequestContext(
-      new RequestContext('', ''),
+      new RequestContext(ctx?.requestId ?? '', ctx?.traceId ?? ''),
       {} as unknown as Login,
       {} as unknown as Project,
       {} as unknown as ProjectMembership,
-      systemRepo,
+      getSystemRepo(),
       systemLogger
     );
   }
 }
 
 export const requestContextStore = new AsyncLocalStorage<RequestContext>();
+
+export function tryGetRequestContext(): RequestContext | undefined {
+  return requestContextStore.getStore();
+}
 
 export function getRequestContext(): RequestContext {
   const ctx = requestContextStore.getStore();
@@ -101,29 +107,37 @@ export function closeRequestContext(): void {
   }
 }
 
+export function getLogger(): Logger {
+  const ctx = requestContextStore.getStore();
+  return ctx ? ctx.logger : systemLogger;
+}
+
+export function tryRunInRequestContext<T>(requestId: string | undefined, traceId: string | undefined, fn: () => T): T {
+  if (requestId && traceId) {
+    return requestContextStore.run(new RequestContext(requestId, traceId), fn);
+  } else {
+    return fn();
+  }
+}
+
+export function getTraceId(req: Request): string | undefined {
+  const xTraceId = req.header('x-trace-id');
+  if (xTraceId && isUUID(xTraceId)) {
+    return xTraceId;
+  }
+
+  const traceparent = req.header('traceparent');
+  if (traceparent && parseTraceparent(traceparent)) {
+    return traceparent;
+  }
+
+  return undefined;
+}
+
 function requestIds(req: Request): { requestId: string; traceId: string } {
   const requestId = randomUUID();
-  const traceIdHeader = req.header('x-trace-id');
-  const traceParentHeader = req.header('traceparent');
-  let traceId: string | undefined;
-  if (traceIdHeader && isUUID(traceIdHeader)) {
-    traceId = traceIdHeader;
-  } else if (traceParentHeader?.startsWith('00-')) {
-    const id = traceParentHeader.split('-')[1];
-    const uuid = [
-      id.substring(0, 8),
-      id.substring(8, 12),
-      id.substring(12, 16),
-      id.substring(16, 20),
-      id.substring(20, 32),
-    ].join('-');
-    if (isUUID(uuid)) {
-      traceId = uuid;
-    }
-  }
-  if (!traceId) {
-    traceId = randomUUID();
-  }
+  const traceId = getTraceId(req) ?? randomUUID();
+
   return { requestId, traceId };
 }
 

@@ -16,9 +16,9 @@ import {
   ParametersParameter,
 } from '@medplum/fhirtypes';
 import { Request, Response } from 'express';
+import { getLogger } from '../../../context';
 import { sendOutcome } from '../../outcomes';
 import { sendResponse } from '../../response';
-import { getRequestContext } from '../../../context';
 
 export function parseParameters<T>(input: T | Parameters): T {
   if (input && typeof input === 'object' && 'resourceType' in input && input.resourceType === 'Parameters') {
@@ -42,7 +42,10 @@ export function parseInputParameters<T>(operation: OperationDefinition, req: Req
     return {} as any;
   }
 
-  const input = req.body;
+  // If the request is a GET request, use the query parameters
+  // Otherwise, use the body
+  const input = req.method === 'GET' ? req.query : req.body;
+
   const inputParameters = operation.parameter.filter((p) => p.use === 'in');
   if (input.resourceType === 'Parameters') {
     if (!input.parameter) {
@@ -103,8 +106,9 @@ function parseParams(
 }
 
 export async function sendOutputParameters(
-  operation: OperationDefinition,
+  req: Request,
   res: Response,
+  operation: OperationDefinition,
   outcome: OperationOutcome,
   output: any
 ): Promise<void> {
@@ -118,7 +122,7 @@ export async function sendOutputParameters(
       );
     } else {
       // Send Resource as output directly, instead of using Parameters format
-      await sendResponse(res, outcome, output);
+      await sendResponse(req, res, outcome, output);
     }
     return;
   }
@@ -171,7 +175,7 @@ export async function sendOutputParameters(
     validateResource(response);
     res.status(getStatus(outcome)).json(response);
   } catch (err: any) {
-    getRequestContext().logger.error('Malformed operation output Parameters', { error: err.toString() });
+    getLogger().error('Malformed operation output Parameters', { error: err.toString() });
     sendOutcome(res, serverError(err));
   }
 }
@@ -207,4 +211,8 @@ function makeParameter(param: OperationDefinitionParameter, value: any): Paramet
     }
   }
   return undefined;
+}
+
+export function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
 }

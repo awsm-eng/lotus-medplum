@@ -30,6 +30,7 @@ import { resourceGraphHandler } from './operations/resourcegraph';
 import { sendOutcome } from './outcomes';
 import { isFhirJsonContentType, sendResponse } from './response';
 import { smartConfigurationHandler, smartStylingHandler } from './smart';
+import { structureDefinitionExpandProfileHandler } from './operations/structuredefinitionexpandprofile';
 
 export const fhirRouter = Router();
 
@@ -163,6 +164,9 @@ protectedRoutes.post('/:resourceType/:id/([$]|%24)expunge', asyncWrap(expungeHan
 // $get-ws-binding-token operation
 protectedRoutes.get('/Subscription/:id/([$]|%24)get-ws-binding-token', asyncWrap(getWsBindingTokenHandler));
 
+// StructureDefinition $expand-profile operation
+protectedRoutes.get('/StructureDefinition/([$]|%24)expand-profile', asyncWrap(structureDefinitionExpandProfileHandler));
+
 // Validate create resource
 protectedRoutes.post(
   '/:resourceType/([$])validate',
@@ -221,7 +225,7 @@ protectedRoutes.use(
       }
       sendOutcome(res, result[0]);
     } else {
-      await sendResponse(res, result[0], result[1]);
+      await sendResponse(req, res, result[0], result[1]);
     }
   })
 );

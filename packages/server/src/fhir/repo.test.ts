@@ -1,4 +1,13 @@
-import { badRequest, createReference, forbidden, isOk, notFound, OperationOutcomeError, Operator } from '@medplum/core';
+import {
+  badRequest,
+  createReference,
+  forbidden,
+  getReferenceString,
+  isOk,
+  notFound,
+  OperationOutcomeError,
+  Operator,
+} from '@medplum/core';
 import {
   BundleEntry,
   ElementDefinition,
@@ -6,6 +15,7 @@ import {
   Observation,
   OperationOutcome,
   Patient,
+  Project,
   ProjectMembership,
   Questionnaire,
   ResourceType,
@@ -18,14 +28,20 @@ import { initAppServices, shutdownApp } from '../app';
 import { registerNew, RegisterRequest } from '../auth/register';
 import { loadTestConfig } from '../config';
 import { getDatabasePool } from '../database';
-import { bundleContains, withTestContext } from '../test.setup';
+import { bundleContains, createTestProject, withTestContext } from '../test.setup';
 import { getRepoForLogin } from './accesspolicy';
-import { Repository, systemRepo } from './repo';
+import { getSystemRepo, Repository } from './repo';
 
 jest.mock('hibp');
 jest.mock('ioredis');
 
 describe('FHIR Repo', () => {
+  const testProject: Project = {
+    resourceType: 'Project',
+    id: randomUUID(),
+  };
+  const systemRepo = getSystemRepo();
+
   beforeAll(async () => {
     const config = await loadTestConfig();
     await initAppServices(config);
@@ -37,7 +53,11 @@ describe('FHIR Repo', () => {
 
   test('getRepoForLogin', async () => {
     await expect(() =>
-      getRepoForLogin({ resourceType: 'Login' } as Login, { resourceType: 'ProjectMembership' } as ProjectMembership)
+      getRepoForLogin(
+        { resourceType: 'Login' } as Login,
+        { resourceType: 'ProjectMembership' } as ProjectMembership,
+        testProject
+      )
     ).rejects.toThrow('Invalid author reference');
   });
 
@@ -166,28 +186,20 @@ describe('FHIR Repo', () => {
 
   test('meta.project preserved after attempting to remove it', () =>
     withTestContext(async () => {
-      const clientApp = 'ClientApplication/' + randomUUID();
-      const projectId = randomUUID();
-      const repo = new Repository({
-        extendedMode: true,
-        project: projectId,
-        author: {
-          reference: clientApp,
-        },
-      });
+      const { project, repo } = await createTestProject({ withClient: true, withRepo: true });
 
       const patient1 = await repo.createResource<Patient>({
         resourceType: 'Patient',
         name: [{ given: ['Update1'], family: 'Update1' }],
       });
       expect(patient1.meta?.project).toBeDefined();
-      expect(patient1.meta?.project).toEqual(projectId);
+      expect(patient1.meta?.project).toEqual(project.id);
 
       const patientWithoutProject = { ...patient1 };
       delete (patientWithoutProject.meta as any).project;
       const patient2 = await systemRepo.updateResource<Patient>(patientWithoutProject);
       expect(patient2.meta?.project).toBeDefined();
-      expect(patient2.meta?.project).toEqual(projectId);
+      expect(patient2.meta?.project).toEqual(project.id);
     }));
 
   test('Update patient no changes', () =>
@@ -228,15 +240,7 @@ describe('FHIR Repo', () => {
     }));
 
   test('Create Patient with custom ID', async () => {
-    const author = 'Practitioner/' + randomUUID();
-
-    const repo = new Repository({
-      project: randomUUID(),
-      extendedMode: true,
-      author: {
-        reference: author,
-      },
-    });
+    const { repo } = await createTestProject({ withRepo: true });
 
     // Try to "update" a resource, which does not exist.
     // Some FHIR systems allow users to set ID's.
@@ -281,21 +285,14 @@ describe('FHIR Repo', () => {
 
   test('Create Patient as ClientApplication with no author', () =>
     withTestContext(async () => {
-      const clientApp = 'ClientApplication/' + randomUUID();
-
-      const repo = new Repository({
-        extendedMode: true,
-        author: {
-          reference: clientApp,
-        },
-      });
+      const { client, repo } = await createTestProject({ withClient: true, withRepo: true });
 
       const patient = await repo.createResource<Patient>({
         resourceType: 'Patient',
         name: [{ given: ['Alice'], family: 'Smith' }],
       });
 
-      expect(patient.meta?.author?.reference).toEqual(clientApp);
+      expect(patient.meta?.author?.reference).toEqual(getReferenceString(client));
     }));
 
   test('Create Patient as Practitioner with no author', () =>
@@ -447,7 +444,7 @@ describe('FHIR Repo', () => {
       const result1 = await registerNew(registration1);
       expect(result1.profile).toBeDefined();
 
-      const repo1 = await getRepoForLogin({ resourceType: 'Login' } as Login, result1.membership);
+      const repo1 = await getRepoForLogin({ resourceType: 'Login' } as Login, result1.membership, result1.project);
       const patient1 = await repo1.createResource<Patient>({
         resourceType: 'Patient',
       });
@@ -470,7 +467,7 @@ describe('FHIR Repo', () => {
       const result2 = await registerNew(registration2);
       expect(result2.profile).toBeDefined();
 
-      const repo2 = await getRepoForLogin({ resourceType: 'Login' } as Login, result2.membership);
+      const repo2 = await getRepoForLogin({ resourceType: 'Login' } as Login, result2.membership, result2.project);
       try {
         await repo2.readResource('Patient', patient1.id as string);
         fail('Should have thrown');
@@ -514,7 +511,7 @@ describe('FHIR Repo', () => {
 
   test('Reindex resource type as non-admin', async () => {
     const repo = new Repository({
-      project: randomUUID(),
+      projects: [randomUUID()],
       author: {
         reference: 'Practitioner/' + randomUUID(),
       },
@@ -529,12 +526,7 @@ describe('FHIR Repo', () => {
   });
 
   test('Reindex resource as non-admin', async () => {
-    const repo = new Repository({
-      project: randomUUID(),
-      author: {
-        reference: 'Practitioner/' + randomUUID(),
-      },
-    });
+    const { repo } = await createTestProject({ withRepo: true });
 
     try {
       await repo.reindexResource('Practitioner', randomUUID());
@@ -559,7 +551,7 @@ describe('FHIR Repo', () => {
 
   test('Rebuild compartments as non-admin', async () => {
     const repo = new Repository({
-      project: randomUUID(),
+      projects: [randomUUID()],
       author: {
         reference: 'Practitioner/' + randomUUID(),
       },
@@ -722,7 +714,7 @@ describe('FHIR Repo', () => {
     const author = 'Practitioner/' + randomUUID();
 
     const repo = new Repository({
-      project: randomUUID(),
+      projects: [randomUUID()],
       extendedMode: true,
       author: {
         reference: author,
@@ -742,7 +734,7 @@ describe('FHIR Repo', () => {
     const author = 'Practitioner/' + randomUUID();
 
     const repo = new Repository({
-      project: randomUUID(),
+      projects: [randomUUID()],
       extendedMode: true,
       author: {
         reference: author,
@@ -762,7 +754,7 @@ describe('FHIR Repo', () => {
     const author = 'Practitioner/' + randomUUID();
 
     const repo = new Repository({
-      project: randomUUID(),
+      projects: [randomUUID()],
       extendedMode: true,
       author: {
         reference: author,
@@ -874,6 +866,8 @@ describe('FHIR Repo', () => {
 
   test('Profile validation', async () =>
     withTestContext(async () => {
+      const { repo } = await createTestProject({ withRepo: true });
+
       const profile = JSON.parse(
         readFileSync(resolve(__dirname, '__test__/us-core-patient.json'), 'utf8')
       ) as StructureDefinition;
@@ -898,25 +892,16 @@ describe('FHIR Repo', () => {
         // Missing gender property is required by profile
       };
 
-      await expect(systemRepo.createResource(patient)).resolves.toBeTruthy();
-      await systemRepo.createResource(profile);
-      await expect(systemRepo.createResource(patient)).rejects.toEqual(
+      await expect(repo.createResource(patient)).resolves.toBeTruthy();
+      await repo.createResource(profile);
+      await expect(repo.createResource(patient)).rejects.toEqual(
         new Error('Missing required property (Patient.gender)')
       );
     }));
 
   test('Profile update', async () =>
     withTestContext(async () => {
-      const clientApp = 'ClientApplication/' + randomUUID();
-      const projectId = randomUUID();
-      const repo = new Repository({
-        extendedMode: true,
-        strictMode: true,
-        project: projectId,
-        author: {
-          reference: clientApp,
-        },
-      });
+      const { repo } = await createTestProject({ withRepo: true });
 
       const originalProfile = JSON.parse(
         readFileSync(resolve(__dirname, '__test__/us-core-patient.json'), 'utf8')

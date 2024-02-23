@@ -2,7 +2,7 @@ import { Group, NativeSelect, TextInput } from '@mantine/core';
 import { ContactPoint } from '@medplum/fhirtypes';
 import { useContext, useMemo, useRef, useState } from 'react';
 import { ComplexTypeInputProps } from '../ResourcePropertyInput/ResourcePropertyInput.utils';
-import { BackboneElementContext } from '../BackboneElementInput/BackboneElementInput.utils';
+import { ElementsContext } from '../ElementsInput/ElementsInput.utils';
 import { getErrorsForInput } from '../utils/outcomes';
 
 export type ContactPointInputProps = ComplexTypeInputProps<ContactPoint> & {
@@ -11,15 +11,15 @@ export type ContactPointInputProps = ComplexTypeInputProps<ContactPoint> & {
 
 export function ContactPointInput(props: ContactPointInputProps): JSX.Element {
   const { path, outcome } = props;
-  const { getModifiedNestedElement } = useContext(BackboneElementContext);
+  const { elementsByPath } = useContext(ElementsContext);
   const [contactPoint, setContactPoint] = useState(props.defaultValue);
 
   const ref = useRef<ContactPoint>();
   ref.current = contactPoint;
 
   const [systemElement, useElement, valueElement] = useMemo(
-    () => ['system', 'use', 'value'].map((field) => getModifiedNestedElement(path + '.' + field)),
-    [getModifiedNestedElement, path]
+    () => ['system', 'use', 'value'].map((field) => elementsByPath[path + '.' + field]),
+    [elementsByPath, path]
   );
 
   function setContactPointWrapper(newValue: ContactPoint | undefined): void {

@@ -50,6 +50,8 @@ export interface MedplumServerConfig {
   shutdownTimeoutMilliseconds?: number;
   heartbeatMilliseconds?: number;
   heartbeatEnabled?: boolean;
+  accurateCountThreshold: number;
+  defaultBotRuntimeVersion: 'awslambda' | 'vmcontext';
 
   /** @deprecated */
   auditEventLogGroup?: string;
@@ -189,7 +191,7 @@ function loadEnvConfig(): MedplumServerConfig {
     key = key.toLowerCase().replace(/_([a-z])/g, (g) => g[1].toUpperCase());
 
     if (isIntegerConfig(key)) {
-      currConfig.port = parseInt(value ?? '', 10);
+      currConfig[key] = parseInt(value ?? '', 10);
     } else if (isBooleanConfig(key)) {
       currConfig[key] = value === 'true';
     } else if (isObjectConfig(key)) {
@@ -244,7 +246,7 @@ async function loadAwsConfig(path: string): Promise<MedplumServerConfig> {
         } else if (key === 'RedisSecrets') {
           config['redis'] = await loadAwsSecrets(region, value);
         } else if (isIntegerConfig(key)) {
-          config.port = parseInt(value, 10);
+          config[key] = parseInt(value, 10);
         } else if (isBooleanConfig(key)) {
           config[key] = value === 'true';
         } else {
@@ -294,11 +296,13 @@ function addDefaults(config: MedplumServerConfig): MedplumServerConfig {
   config.bcryptHashSalt = config.bcryptHashSalt || 10;
   config.bullmq = { concurrency: 10, removeOnComplete: { count: 1 }, removeOnFail: { count: 1 }, ...config.bullmq };
   config.shutdownTimeoutMilliseconds = config.shutdownTimeoutMilliseconds ?? 30000;
+  config.accurateCountThreshold = config.accurateCountThreshold ?? 1000000;
+  config.defaultBotRuntimeVersion = config.defaultBotRuntimeVersion ?? 'awslambda';
   return config;
 }
 
 function isIntegerConfig(key: string): boolean {
-  return key === 'port';
+  return key === 'port' || key === 'accurateCountThreshold';
 }
 
 function isBooleanConfig(key: string): boolean {

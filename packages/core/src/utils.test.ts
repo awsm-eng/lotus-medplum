@@ -32,8 +32,10 @@ import {
   getExtensionValue,
   getIdentifier,
   getImageSrc,
+  getPathDifference,
   getQuestionnaireAnswers,
   getReferenceString,
+  isComplexTypeCode,
   isEmpty,
   isLowerCase,
   isPopulated,
@@ -53,6 +55,7 @@ import {
   splitN,
   stringify,
 } from './utils';
+import { PropertyType } from './types';
 
 if (typeof btoa === 'undefined') {
   global.btoa = function (str) {
@@ -635,6 +638,8 @@ describe('Core Utils', () => {
     const output = deepClone(input);
     expect(output).toEqual(input);
     expect(output).not.toBe(input);
+
+    expect(deepClone(undefined)).toBeUndefined();
   });
 
   test('Capitalize', () => {
@@ -650,6 +655,25 @@ describe('Core Utils', () => {
     expect(isLowerCase('a')).toEqual(true);
     expect(isLowerCase('A')).toEqual(false);
     expect(isLowerCase('3')).toEqual(false);
+  });
+
+  test('isComplexTypeCode', () => {
+    expect(isComplexTypeCode('url')).toEqual(false);
+    expect(isComplexTypeCode(PropertyType.SystemString)).toEqual(false);
+    expect(isComplexTypeCode('')).toEqual(false);
+  });
+
+  test('getPathDifference', () => {
+    expect(getPathDifference('a', 'b')).toEqual(undefined);
+    expect(getPathDifference('a', 'a')).toEqual(undefined);
+    expect(getPathDifference('A', 'A')).toEqual(undefined);
+    expect(getPathDifference('a.b', 'a')).toEqual(undefined);
+
+    expect(getPathDifference('a', 'a.b')).toEqual('b');
+    expect(getPathDifference('A.b', 'A.b.c.d')).toEqual('c.d');
+    expect(getPathDifference('Patient.extension', 'Patient.extension.extension.value[x]')).toEqual(
+      'extension.value[x]'
+    );
   });
 
   test('isUUID', () => {
@@ -1088,6 +1112,7 @@ describe('Core Utils', () => {
       splitN('_has:Observation:subject:encounter:Encounter._has:DiagnosticReport:encounter:result.status', ':', 3)
     ).toEqual(['_has', 'Observation', 'subject:encounter:Encounter._has:DiagnosticReport:encounter:result.status']);
     expect(splitN('organization', ':', 2)).toEqual(['organization']);
+    expect(splitN('system|', '|', 2)).toEqual(['system', '']);
   });
 
   test('lazy', () => {

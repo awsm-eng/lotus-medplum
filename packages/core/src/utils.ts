@@ -606,7 +606,7 @@ function deepIncludesObject(value: { [key: string]: unknown }, pattern: { [key: 
  * @returns A deep clone of the input.
  */
 export function deepClone<T>(input: T): T {
-  return JSON.parse(JSON.stringify(input)) as T;
+  return input === undefined ? input : (JSON.parse(JSON.stringify(input)) as T);
 }
 
 /**
@@ -681,6 +681,24 @@ export function capitalize(word: string): string {
 
 export function isLowerCase(c: string): boolean {
   return c === c.toLowerCase() && c !== c.toUpperCase();
+}
+
+export function isComplexTypeCode(code: string): boolean {
+  return code.length > 0 && code.startsWith(code[0].toUpperCase());
+}
+
+/**
+ * Returns the difference between two paths which is often suitable to use as a key in a `Record<string, InternalSchemaElement>`
+ * @param parentPath - The parent path that will be removed from `path`.
+ * @param path - The element path that should be a child of `parentPath`.
+ * @returns - The difference between `path` and `parentPath` or `undefined` if `path` is not a child of `parentPath`.
+ */
+export function getPathDifference(parentPath: string, path: string): string | undefined {
+  const parentPathPrefix = parentPath + '.';
+  if (path.startsWith(parentPathPrefix)) {
+    return path.slice(parentPathPrefix.length);
+  }
+  return undefined;
 }
 
 /**
@@ -930,19 +948,27 @@ export const sleep = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+/**
+ * Splits a string into an array of strings using the specified delimiter.
+ * Unlike the built-in split function, this function will split the string into a maximum of exactly n parts.
+ * Trailing empty strings are included in the result.
+ * @param str - The string to split.
+ * @param delim - The delimiter.
+ * @param n - The maximum number of parts to split the string into.
+ * @returns The resulting array of strings.
+ */
 export function splitN(str: string, delim: string, n: number): string[] {
   const result: string[] = [];
   for (let i = 0; i < n - 1; i++) {
-    let delimIndex = str.indexOf(delim);
+    const delimIndex = str.indexOf(delim);
     if (delimIndex < 0) {
-      delimIndex = str.length;
+      break;
+    } else {
+      result.push(str.slice(0, delimIndex));
+      str = str.slice(delimIndex + delim.length);
     }
-    result.push(str.slice(0, delimIndex));
-    str = str.slice(delimIndex + delim.length);
   }
-  if (str) {
-    result.push(str);
-  }
+  result.push(str);
   return result;
 }
 
@@ -970,4 +996,8 @@ export function append<T>(array: T[] | undefined, value: T): T[] {
   }
   array.push(value);
   return array;
+}
+
+export function getWebSocketUrl(path: string, baseUrl: URL | string): string {
+  return new URL(path, baseUrl).toString().replace('http://', 'ws://').replace('https://', 'wss://');
 }

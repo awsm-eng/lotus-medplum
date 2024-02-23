@@ -27,16 +27,17 @@ import {
   setupRecaptchaMock,
   withTestContext,
 } from '../../test.setup';
-import { systemRepo } from '../repo';
+import { getSystemRepo } from '../repo';
 import { getBinaryStorage } from '../storage';
 import { createProject } from './projectinit';
 
 jest.mock('node-fetch');
 jest.mock('hibp');
 
-const app = express();
-
 describe('Project clone', () => {
+  const app = express();
+  const systemRepo = getSystemRepo();
+
   beforeAll(async () => {
     const config = await loadTestConfig();
     await initApp(app, config);
@@ -118,7 +119,7 @@ describe('Project clone', () => {
   });
 
   test('Success with project name in body', async () => {
-    const { project } = await createTestProject();
+    const { project } = await createTestProject({ withClient: true });
     const newProjectName = 'A New Name for cloned project';
     expect(project).toBeDefined();
 
@@ -211,7 +212,7 @@ describe('Project clone', () => {
   });
 
   test('Success with resource type in body', async () => {
-    const { project } = await createTestProject();
+    const { project } = await createTestProject({ withClient: true });
     const resourceTypes = ['ProjectMembership'];
     expect(project).toBeDefined();
 
@@ -247,7 +248,7 @@ describe('Project clone', () => {
   });
 
   test('Success with includeIds in body', async () => {
-    const { project, membership } = await createTestProject();
+    const { project, membership } = await createTestProject({ withClient: true });
     const includeIds = [membership.id];
     expect(project).toBeDefined();
 
@@ -283,7 +284,7 @@ describe('Project clone', () => {
   });
 
   test('Success with excludeIds in body', async () => {
-    const { project, membership } = await createTestProject();
+    const { project, membership } = await createTestProject({ withClient: true });
     const excludeIds = [membership.id];
     expect(project).toBeDefined();
 
@@ -319,12 +320,11 @@ describe('Project clone', () => {
   });
 
   test('Success with Bot attachments', async () => {
-    const { project } = await createTestProject();
+    const { project, repo } = await createTestProject({ withRepo: true });
     expect(project).toBeDefined();
 
-    const sourceCodeBinary = await systemRepo.createResource<Binary>({
+    const sourceCodeBinary = await repo.createResource<Binary>({
       resourceType: 'Binary',
-      meta: { project: project.id },
       contentType: ContentType.JAVASCRIPT,
     });
 
@@ -335,9 +335,8 @@ describe('Project clone', () => {
       Readable.from('console.log("Hello world");')
     );
 
-    const bot = await systemRepo.createResource<Bot>({
+    const bot = await repo.createResource<Bot>({
       resourceType: 'Bot',
-      meta: { project: project.id },
       name: 'Test Bot',
       sourceCode: {
         url: getReferenceString(sourceCodeBinary),

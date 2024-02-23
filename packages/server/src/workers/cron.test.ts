@@ -1,29 +1,30 @@
-import { Repository, systemRepo } from '../fhir/repo';
-import { loadTestConfig } from '../config';
-import { initAppServices, shutdownApp } from '../app';
-import { AuditEvent, Bot, Project, ProjectMembership } from '@medplum/fhirtypes';
-import { createTestProject, withTestContext } from '../test.setup';
 import { createReference } from '@medplum/core';
-import { convertTimingToCron, CronJobData, execBot, getCronQueue } from './cron';
-import { randomUUID } from 'crypto';
+import { AuditEvent, Bot, Project, ProjectMembership } from '@medplum/fhirtypes';
 import { Job } from 'bullmq';
+import { randomUUID } from 'crypto';
+import { initAppServices, shutdownApp } from '../app';
+import { loadTestConfig } from '../config';
+import { Repository, getSystemRepo } from '../fhir/repo';
+import { createTestProject, withTestContext } from '../test.setup';
+import { CronJobData, convertTimingToCron, execBot, getCronQueue } from './cron';
 
 jest.mock('node-fetch');
 
-let botProject: Project;
-let botRepo: Repository;
-
 describe('Cron Worker', () => {
+  const systemRepo = getSystemRepo();
+  let botProject: Project;
+  let botRepo: Repository;
+
   beforeAll(async () => {
     const config = await loadTestConfig();
     await initAppServices(config);
 
     // Create a project
-    const botProjectDetails = await createTestProject();
+    const botProjectDetails = await createTestProject({ withClient: true });
     botProject = botProjectDetails.project;
     botRepo = new Repository({
       extendedMode: true,
-      project: botProjectDetails.project.id,
+      projects: [botProjectDetails.project.id as string],
       author: createReference(botProjectDetails.client),
     });
   });
@@ -179,7 +180,7 @@ describe('Cron Worker', () => {
 
       const repo = new Repository({
         extendedMode: true,
-        project: testProject.id,
+        projects: [testProject.id as string],
         author: {
           reference: 'ClientApplication/' + randomUUID(),
         },

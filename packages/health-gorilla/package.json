@@ -1,6 +1,6 @@
 {
   "name": "@medplum/health-gorilla",
-  "version": "3.0.2",
+  "version": "3.0.4",
   "description": "Medplum Health Gorilla SDK",
   "homepage": "https://www.medplum.com/",
   "bugs": {
@@ -39,7 +39,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@medplum/core": "*",
+    "@medplum/core": "3.0.4",
     "@medplum/fhirtypes": "*"
   },
   "devDependencies": {
