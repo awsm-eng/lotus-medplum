@@ -1,0 +1,52 @@
+{
+  "type": "module",
+  "name": "@awsm/medplum-dashboard",
+  "version": "2.1.4",
+  "description": "Medplum AWSM Dashboard",
+  "author": "AWSM <engineering@awsm.vc>",
+  "license": "Apache-2.0",
+  "homepage": "https://www.awsm.vc/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/awsm-eng/medplum.git",
+    "directory": "packages/dashboard"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rimraf dist",
+    "dev": "vite",
+    "build": "npm run clean && tsc && vite build",
+    "test": "jest",
+    "source-map-explorer": "source-map-explorer dist/**/*.js --gzip"
+  },
+  "devDependencies": {
+    "@emotion/react": "11.11.1",
+    "@mantine/core": "6.0.20",
+    "@mantine/dropzone": "6.0.20",
+    "@mantine/hooks": "6.0.20",
+    "@mantine/notifications": "6.0.20",
+    "@medplum/core": "*",
+    "@medplum/definitions": "*",
+    "@medplum/fhirtypes": "*",
+    "@medplum/mock": "*",
+    "@medplum/react": "*",
+    "@tabler/icons-react": "2.34.0",
+    "@testing-library/jest-dom": "6.1.3",
+    "@testing-library/react": "14.0.0",
+    "@types/grecaptcha": "3.0.4",
+    "@types/react": "18.2.21",
+    "@types/react-dom": "18.2.7",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "react-router-dom": "6.16.0",
+    "vite": "4.4.9"
+  },
+  "browserslist": [
+    "last 1 Chrome versions"
+  ]
+}
