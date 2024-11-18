@@ -2,7 +2,11 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "module": "es2020",
-    "types": ["jest", "vite/client"],
+    "types": [
+      "vite/client",
+      "jest",
+      "node",
+    ],
     "lib": ["esnext", "dom"],
     "outDir": "dist/types",
     "noEmit": false,
@@ -10,10 +14,5 @@
   },
   "include": [
     "src/**/*.ts"
-  ],
-  "typeRoots": [
-    "./node_modules/@types",
-    "./types",
-    "./node_modules"
   ]
 }
