@@ -138,7 +138,7 @@ export class AddressTable extends LookupTable {
       case 'Organization':
         return resource.address;
       case 'InsurancePlan':
-        return resource.contact?.map((contact) => contact.address).filter((address) => !!address);
+        return resource.contact?.map((contact) => contact.address).filter((address) => !!address) as Address[];
       case 'Location':
         return resource.address ? [resource.address] : undefined;
       default:
