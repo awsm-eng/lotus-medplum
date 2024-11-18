@@ -2,17 +2,11 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "module": "es2020",
-    "types": [
-      "vite/client",
-      "jest",
-      "node",
-    ],
+    "types": ["vite/client", "jest", "node"],
     "lib": ["esnext", "dom"],
     "outDir": "dist/types",
     "noEmit": false,
     "emitDeclarationOnly": true
   },
-  "include": [
-    "src/**/*.ts"
-  ]
+  "include": ["src/**/*.ts"]
 }

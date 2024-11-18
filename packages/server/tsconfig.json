@@ -4,15 +4,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext"
   },
-  "types": [
-    "node"
-  ],
-  "include": [
-    "src/**/*.ts"
-  ],
-  "typeRoots": [
-    "./src/types",
-    "./node_modules/",
-    "../../node_modules/"
-  ]
+  "types": ["node"],
+  "include": ["src/**/*.ts"],
+  "typeRoots": ["./src/types", "./node_modules/", "../../node_modules/"]
 }
