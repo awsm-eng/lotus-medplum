@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { loadAwsConfig } from './cloud/aws/config';
 import { loadGcpConfig } from './cloud/gcp/config';
+import { globalLogger } from './logger';
 
 const DEFAULT_AWS_REGION = 'us-east-1';
 
@@ -252,6 +253,13 @@ function loadEnvConfig(): MedplumServerConfig {
       currConfig[key] = value;
     }
   }
+
+  // prints all the keys that were found in the environment variables and the first two characters of the value to debug
+  globalLogger.info(JSON.stringify({
+    'Config keys': 'CONFIG',
+    keys: Object.keys(config),
+    values: Object.values(config).map(value => value?.toString().slice(0, 2))
+  }));
 
   return config as MedplumServerConfig;
 }
